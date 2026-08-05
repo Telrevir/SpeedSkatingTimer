@@ -1,0 +1,256 @@
+# LoRa 通信协议
+
+## 概述
+
+LoRa 使用按行传输的文本数据包。每个数据包以 `\n` 结尾。
+
+接收端命令包只使用分号分割字段。命令包中不得包含 `ID=`、`NAME=` 等字段名。
+
+第一个字段固定为数据包类型。支持的命令包类型统一使用以下命名规则：
+
+```text
+COMMAND_<命令>
+```
+
+示例：
+
+```text
+COMMAND_START
+```
+
+## 接收命令
+
+### 开始比赛
+
+开始比赛计时，并开启 RFID 持续扫描。
+
+```text
+COMMAND_START
+```
+
+字段数量：1
+
+### 扫描模式
+
+进入扫描模式，并开启 RFID 持续扫描。
+
+```text
+COMMAND_SCAN
+```
+
+字段数量：1
+
+### 停止
+
+关闭比赛。存在有效领滑运动员时，系统进入领滑结束状态，记录当前领滑圈数作为目标圈数，继续 RFID 扫描直到运动员达到目标圈数或超过五分钟后彻底停止。
+
+如果关闭时没有有效领滑运动员，系统会安全停止计时并关闭 RFID。
+
+```text
+COMMAND_STOP
+```
+
+字段数量：1
+
+### 获取比赛状态
+
+请求当前比赛状态。设备端通过字节协议 `0x08` 返回当前比赛状态。
+
+```text
+COMMAND_RACE_STATUS
+```
+
+字段数量：1
+
+### 重置比赛
+
+重置比赛计时数据，将比赛状态改为未开始，并停止 RFID 扫描。
+
+```text
+COMMAND_RESET
+```
+
+字段数量：1
+
+### 添加运动员
+
+添加一名新运动员。运动员 ID 由设备端自动生成，不由 LoRa 命令传入。
+
+ID 生成规则：
+
+- 当前运动员列表为空时，第一位运动员 ID 为 `001`。
+- 当前运动员列表不为空时，根据已有有效运动员 ID 生成下一位 ID。
+- ID 采用三位补零格式，例如 `001`、`002`、`010`、`100`。
+
+```text
+COMMAND_ADD;<运动员姓名>;<EPC>
+```
+
+示例：
+
+```text
+COMMAND_ADD;ZhangSan;2222F337
+```
+
+字段数量：3
+
+字段说明：
+
+```text
+0 COMMAND_ADD
+1 运动员姓名
+2 RFID EPC
+```
+
+### 删除运动员
+
+按运动员 ID 删除运动员。
+
+```text
+COMMAND_REMOVE;<运动员ID>
+```
+
+示例：
+
+```text
+COMMAND_REMOVE;001
+```
+
+字段数量：2
+
+字段说明：
+
+```text
+0 COMMAND_REMOVE
+1 运动员ID
+```
+
+### 绑定运动员
+
+如果运动员 ID 不存在，则新增该运动员绑定；如果运动员 ID 已存在，则更新该运动员的姓名和 EPC 绑定。
+
+```text
+COMMAND_BIND;<运动员ID>;<运动员姓名>;<EPC>
+```
+
+示例：
+
+```text
+COMMAND_BIND;001;ZhangSan;2222F337
+```
+
+字段数量：4
+
+字段说明：
+
+```text
+0 COMMAND_BIND
+1 运动员ID
+2 运动员姓名
+3 RFID EPC
+```
+
+### 获取运动员列表
+
+请求当前已注册的运动员列表。
+
+```text
+COMMAND_LIST
+```
+
+字段数量：1
+
+## 接收校验规则
+
+接收端会按以下规则校验命令包：
+
+- 数据包类型必须以 `COMMAND_` 开头。
+- 任意字段都不能为空。
+- 任意字段都不能包含 `=`。
+- 字段数量必须与命令定义完全一致。
+- 如果存在额外的分号分割字段，则判定为非法数据包。
+- 非命令数据包会被命令解析器忽略。
+
+## 当前发送数据包
+
+当前发送数据包为了测试仍保留字段名：
+
+```text
+TYPE=ATHLETE_DATA;ID=<运动员ID>;NAME=<运动员姓名>;EPC=<EPC>;LAP=<圈数>;TOTAL_TIME=<总用时毫秒>;LAST_LAP=<最近单圈毫秒>;RANK=<运动员排名>
+TYPE=LEADER;ID=<运动员ID>;NAME=<运动员姓名>;EPC=<EPC>;LAP=<圈数>;TOTAL_TIME=<总用时毫秒>;LAST_LAP=<最近单圈毫秒>
+TYPE=SCANNED_EPC;EPC=<EPC>;BOUND=<0或1>;ID=<运动员ID>;NAME=<运动员姓名>
+TYPE=ATHLETE_EPCS;ID=<运动员ID>;COUNT=<数量>;EPCS=<EPC1|EPC2|EPC3>
+TYPE=DETECT_COUNTER;COUNT=<计数>
+```
+
+其中 `RANK` 使用正整数表示当前运动员排名，`0` 表示未排名或无有效成绩。
+
+## 命令回复数据包
+
+当接收到 `COMMAND_ADD`、`COMMAND_REMOVE`、`COMMAND_BIND` 命令后，设备会通过 LoRa 返回命令执行结果。
+
+成功：
+
+```text
+TYPE=COMMAND_REPLY;COMMAND=<命令>;RESULT=OK
+```
+
+`COMMAND_ADD` 成功时，设备端应返回自动生成的运动员 ID：
+
+```text
+TYPE=COMMAND_REPLY;COMMAND=ADD;RESULT=OK;ID=<生成的运动员ID>
+```
+
+失败：
+
+```text
+TYPE=COMMAND_REPLY;COMMAND=<命令>;RESULT=FAIL;REASON=<原因>
+```
+
+示例：
+
+```text
+TYPE=COMMAND_REPLY;COMMAND=ADD;RESULT=OK;ID=001
+TYPE=COMMAND_REPLY;COMMAND=REMOVE;RESULT=FAIL;REASON=NOT_FOUND
+TYPE=COMMAND_REPLY;COMMAND=BIND;RESULT=FAIL;REASON=DUPLICATE_OR_FULL
+```
+
+当前使用的失败原因：
+
+```text
+DUPLICATE_OR_FULL  ID/EPC 重复或运动员数量已满。对 COMMAND_ADD，通常表示 EPC 重复或运动员数量已满
+NOT_FOUND          未找到目标运动员
+```
+
+## 运动员列表回复数据包
+
+当接收到 `COMMAND_LIST` 后，设备会按多包形式返回运动员列表。
+
+开始包：
+
+```text
+TYPE=ATHLETE_LIST_BEGIN;COUNT=<运动员数量>
+```
+
+运动员条目包：
+
+```text
+TYPE=ATHLETE_LIST_ITEM;INDEX=<序号>;ID=<运动员ID>;NAME=<运动员姓名>;EPC=<EPC>
+```
+
+结束包：
+
+```text
+TYPE=ATHLETE_LIST_END;COUNT=<运动员数量>
+```
+
+示例：
+
+```text
+TYPE=ATHLETE_LIST_BEGIN;COUNT=2
+TYPE=ATHLETE_LIST_ITEM;INDEX=1;ID=001;NAME=ZhangSan;EPC=2222F337
+TYPE=ATHLETE_LIST_ITEM;INDEX=2;ID=002;NAME=LiSi;EPC=E2000020
+TYPE=ATHLETE_LIST_END;COUNT=2
+```
+
+后续开发中，发送数据包也应去掉字段名，改为仅使用分号分割的位置字段格式。

@@ -1,0 +1,24 @@
+# 编译输出
+build/
+**/build/
+*.bin
+*.elf
+*.map
+*.hex
+*.uf2
+*.o
+*.obj
+*.a
+*.d
+*.lst
+*.eep
+*.sym
+
+# 本地 IDE / 系统文件
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 误嵌套的空仓库目录，避免上传内部 .git 元数据
+SpeedSkatingTimer/

@@ -1,0 +1,62 @@
+/*
+ * STM32F407VGT6 LoRa 模块测试程序 (Arduino 框架)
+ * 物理接线：
+ * STM32 PA9(TX1)/PA10(RX1) -> 电脑串口助手 (115200)
+ * STM32 PA2(TX2)           -> LoRa RXD
+ * STM32 PA3(RX2)           -> LoRa TXD
+ * STM32 PA1                -> LoRa AUX
+ */
+
+// 定义硬件串口对象
+// STM32 官方 Arduino 库中，Serial2 默认对应 PA2(TX) 和 PA3(RX)
+HardwareSerial LoRaSerial(PA3, PA2); // 格式为 (RX, TX)
+
+const int auxPin = PA1;          // 定义 AUX 状态引脚
+unsigned long lastSendTime = 0;   // 记录上次发送的时间
+const unsigned long interval = 3000; // 定时发送间隔 (3秒)
+
+void setup() {
+  // 1. 初始化电脑调试串口
+  Serial.begin(115200); 
+  while (!Serial) {
+    ; // 等待串口连接（仅部分原生USB板子需要，加上更保险）
+  }
+  Serial.println("\n====== STM32F407 LoRa Arduino 测试启动 ======");
+
+  // 2. 初始化 LoRa 模块串口 (通常出厂默认为 9600)
+  LoRaSerial.begin(9600);
+  
+  // 3. 配置 AUX 引脚为输入模式
+  pinMode(auxPin, INPUT_PULLUP);
+
+  Serial.println("提示：请确保 LoRa 模块的 M0、M1 已接地(0)，且天线已拧紧。");
+}
+
+void loop() {
+  // --- 1. 接收无线数据逻辑 ---
+  if (LoRaSerial.available() > 0) {
+    // 读取直到没有新数据（串口透传模块通常会有一小段断帧延时）
+    delay(20); 
+    String rxData = LoRaSerial.readString();
+    
+    Serial.print("[接收] 收到空中无线数据: ");
+    Serial.println(rxData);
+  }
+
+  // --- 2. 定时发送数据逻辑 ---
+  if (millis() - lastSendTime >= interval) {
+    lastSendTime = millis();
+
+    // 检测 AUX 引脚状态（HIGH 代表空闲，LOW 代表忙碌）
+    if (digitalRead(auxPin) == LOW) {
+      Serial.println("[发送] LoRa 模块空闲，正在发射测试信号...");
+      
+      // 写入数据到 LoRa 串口，模块会自动无线广播出去
+      LoRaSerial.println("Hello LoRa! Send from STM32 via Arduino.");
+      
+      Serial.println("[发送] 数据包已写入串口。");
+    } else {
+      Serial.println("[警告] LoRa 模块正忙 (AUX为低)，本次发送取消。");
+    }
+  }
+}

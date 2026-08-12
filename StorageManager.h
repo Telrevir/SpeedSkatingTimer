@@ -293,13 +293,17 @@ private:
       return false;
     }
 
-    if (!removeFileIfExists(filename)) {
-      Serial.print("[Storage] 清理目标文件失败: ");
-      Serial.println(filename);
-      return false;
-    }
-    delay(200);
-    File file = SD.open(filename, FILE_WRITE);
+    // if (!removeFileIfExists(filename)) {
+    //   Serial.print("[Storage] 清理目标文件失败: ");
+    //   Serial.println(filename);
+    //   return false;
+    // }
+    // delay(200);
+    File file = SD.open(
+      filename,
+      FILE_WRITE | FA_CREATE_ALWAYS
+    );
+    //File file = SD.open(filename, FILE_WRITE);
     if (!file) {
       Serial.print("[Storage] 无法打开运动员文件进行写入: ");
       Serial.println(filename);

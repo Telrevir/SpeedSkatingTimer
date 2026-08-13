@@ -16,6 +16,7 @@ build/
 
 # 本地 IDE / 系统文件
 .vscode/
+.vs/
 .idea/
 .DS_Store
 Thumbs.db

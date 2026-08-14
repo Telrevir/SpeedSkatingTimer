@@ -18,6 +18,24 @@ int main() {
   assert(DetectProtocol::readUInt16BE(integerBytes) == 0x1234);
   assert(DetectProtocol::readUInt32BE(integerBytes) == 0x12345678UL);
 
+  assert(DetectProtocol::expectedPayloadLength(DetectProtocol::CMD_START) == 0);
+  assert(DetectProtocol::expectedPayloadLength(
+           DetectProtocol::CMD_DEFINE_EPC) == 7);
+  assert(DetectProtocol::expectedPayloadLength(
+           DetectProtocol::CMD_GET_ATHLETES) == 0);
+
+  DetectProtocol::DefineEpcData definition{};
+  uint8_t definitionBytes[] = {0x01, 0x33, 0x33, 0xF3,
+                               0x37, 0x00, 0x01};
+  assert(DetectProtocol::decodeDefineEpc(definitionBytes,
+                                         sizeof(definitionBytes), definition));
+  assert(definition.isAthlete);
+  assert(definition.epc == 0x3333F337UL);
+  assert(definition.athleteId == 1);
+  definitionBytes[0] = 0x02;
+  assert(!DetectProtocol::decodeDefineEpc(definitionBytes,
+                                          sizeof(definitionBytes), definition));
+
   uint8_t output[16] = {};
   uint8_t definePayload[] = {0x01, 0x33, 0x33, 0xF3, 0x37, 0x00, 0x01};
   assert(DetectProtocol::encodePacket(DetectProtocol::CMD_DEFINE_EPC,
@@ -30,13 +48,18 @@ int main() {
   DetectProtocol::writeUInt16BE(athletePayload, 1);
   athletePayload[2] = 0;
   DetectProtocol::writeUInt24BE(athletePayload + 3, 0);
+  uint8_t builtAthletePayload[6] = {};
+  DetectProtocol::buildAthletePayload(1, 0, 0, builtAthletePayload);
+  for (uint8_t i = 0; i < 6; ++i) {
+    assert(builtAthletePayload[i] == athletePayload[i]);
+  }
   assert(DetectProtocol::encodePacket(DetectProtocol::CMD_ATHLETE,
                                       athletePayload, sizeof(athletePayload),
                                       output, sizeof(output)) == 11);
   assert(output[1] == 0x12 && output[9] == 0x19 && output[10] == 0xF9);
 
   uint8_t epcPayload[4] = {};
-  DetectProtocol::writeUInt32BE(epcPayload, 0x3333F337UL);
+  DetectProtocol::buildEpcPayload(0x3333F337UL, epcPayload);
   assert(DetectProtocol::encodePacket(DetectProtocol::CMD_EPC,
                                       epcPayload, sizeof(epcPayload),
                                       output, sizeof(output)) == 9);

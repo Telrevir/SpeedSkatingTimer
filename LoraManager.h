@@ -5,8 +5,11 @@
 #include <HardwareSerial.h>
 #include "config.h"
 #include "DetectProtocol.h"
+#include "DetectionController.h"
 
-typedef void (*DetectCommandHandler)(uint8_t commandId);
+typedef void (*DetectCommandHandler)(uint8_t commandId,
+                                     const uint8_t* payload,
+                                     uint8_t payloadLength);
 
 class LoraManager {
 private:
@@ -76,7 +79,7 @@ private:
       return;
     }
 
-    if (payloadLength_ != 0) {
+    if (payloadLength_ != DetectProtocol::expectedPayloadLength(commandId_)) {
       Serial.print("[错误] 命令Payload长度错误：0x");
       printCommand(commandId_);
       Serial.println();
@@ -89,7 +92,7 @@ private:
       sendStatus(commandId_, DetectProtocol::STATUS_STATE_NOT_ALLOWED);
       return;
     }
-    commandHandler_(commandId_);
+    commandHandler_(commandId_, payload_, payloadLength_);
   }
 
   void consumeByte(uint8_t value) {
@@ -183,15 +186,22 @@ public:
     return sendPacket(DetectProtocol::CMD_STATE, payload, sizeof(payload));
   }
 
-  bool sendDetectedEpc(uint32_t epc, uint32_t centiseconds) {
-    uint8_t payload[7] = {
-      static_cast<uint8_t>((epc >> 24) & 0xFF),
-      static_cast<uint8_t>((epc >> 16) & 0xFF),
-      static_cast<uint8_t>((epc >> 8) & 0xFF),
-      static_cast<uint8_t>(epc & 0xFF),
-      0, 0, 0
-    };
-    DetectProtocol::writeUInt24BE(payload + 4, centiseconds);
+  bool sendAthlete(const AthleteInfo& athlete) {
+    uint8_t payload[6];
+    DetectProtocol::buildAthletePayload(
+      athlete.id, athlete.lapCount, athlete.totalCentiseconds, payload);
+    return sendPacket(DetectProtocol::CMD_ATHLETE, payload, sizeof(payload));
+  }
+
+  bool sendAthleteTransfer(bool started) {
+    uint8_t payload[1] = {static_cast<uint8_t>(started ? 0x01 : 0x00)};
+    return sendPacket(DetectProtocol::CMD_ATHLETE_TRANSFER,
+                      payload, sizeof(payload));
+  }
+
+  bool sendDetectedEpc(uint32_t epc) {
+    uint8_t payload[4];
+    DetectProtocol::buildEpcPayload(epc, payload);
     return sendPacket(DetectProtocol::CMD_EPC, payload, sizeof(payload));
   }
 

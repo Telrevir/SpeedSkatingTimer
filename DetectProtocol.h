@@ -38,6 +38,12 @@ static constexpr uint8_t STATUS_PAYLOAD_TOO_LONG = 0x0D;
 static constexpr uint8_t STATUS_RECEIVE_TIMEOUT = 0x0E;
 static constexpr uint8_t STATUS_RFID_IO_ERROR = 0x0F;
 
+struct DefineEpcData {
+  bool isAthlete;
+  uint32_t epc;
+  uint16_t athleteId;
+};
+
 inline uint8_t checksum(uint8_t commandId, uint8_t payloadLength,
                         const uint8_t* payload) {
   uint16_t sum = commandId + payloadLength;
@@ -87,6 +93,31 @@ inline void writeUInt32BE(uint8_t* output, uint32_t value) {
   output[1] = static_cast<uint8_t>((value >> 16) & 0xFF);
   output[2] = static_cast<uint8_t>((value >> 8) & 0xFF);
   output[3] = static_cast<uint8_t>(value & 0xFF);
+}
+
+inline uint8_t expectedPayloadLength(uint8_t commandId) {
+  return commandId == CMD_DEFINE_EPC ? 7 : 0;
+}
+
+inline bool decodeDefineEpc(const uint8_t* payload, uint8_t payloadLength,
+                            DefineEpcData& result) {
+  if (payloadLength != 7 || payload[0] > 0x01) return false;
+  result.isAthlete = payload[0] == 0x01;
+  result.epc = readUInt32BE(payload + 1);
+  result.athleteId = readUInt16BE(payload + 5);
+  return true;
+}
+
+inline void buildAthletePayload(uint16_t id, uint8_t lapCount,
+                                uint32_t totalCentiseconds,
+                                uint8_t* output) {
+  writeUInt16BE(output, id);
+  output[2] = lapCount;
+  writeUInt24BE(output + 3, totalCentiseconds);
+}
+
+inline void buildEpcPayload(uint32_t epc, uint8_t* output) {
+  writeUInt32BE(output, epc);
 }
 
 inline bool isAppCommand(uint8_t commandId) {

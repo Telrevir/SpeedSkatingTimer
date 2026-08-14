@@ -14,7 +14,11 @@ static constexpr uint8_t CMD_START = 0x01;
 static constexpr uint8_t CMD_STOP = 0x02;
 static constexpr uint8_t CMD_GET_STATE = 0x03;
 static constexpr uint8_t CMD_STATE = 0x04;
-static constexpr uint8_t CMD_EPC = 0x13;
+static constexpr uint8_t CMD_DEFINE_EPC = 0x10;
+static constexpr uint8_t CMD_GET_ATHLETES = 0x11;
+static constexpr uint8_t CMD_ATHLETE = 0x12;
+static constexpr uint8_t CMD_ATHLETE_TRANSFER = 0x13;
+static constexpr uint8_t CMD_EPC = 0x14;
 static constexpr uint8_t CMD_STATUS = 0xF0;
 
 static constexpr uint8_t STATUS_SUCCESS = 0x00;
@@ -62,9 +66,33 @@ inline void writeUInt24BE(uint8_t* output, uint32_t value) {
   output[2] = static_cast<uint8_t>(value & 0xFF);
 }
 
+inline uint16_t readUInt16BE(const uint8_t* input) {
+  return (static_cast<uint16_t>(input[0]) << 8) | input[1];
+}
+
+inline uint32_t readUInt32BE(const uint8_t* input) {
+  return (static_cast<uint32_t>(input[0]) << 24) |
+         (static_cast<uint32_t>(input[1]) << 16) |
+         (static_cast<uint32_t>(input[2]) << 8) |
+         input[3];
+}
+
+inline void writeUInt16BE(uint8_t* output, uint16_t value) {
+  output[0] = static_cast<uint8_t>((value >> 8) & 0xFF);
+  output[1] = static_cast<uint8_t>(value & 0xFF);
+}
+
+inline void writeUInt32BE(uint8_t* output, uint32_t value) {
+  output[0] = static_cast<uint8_t>((value >> 24) & 0xFF);
+  output[1] = static_cast<uint8_t>((value >> 16) & 0xFF);
+  output[2] = static_cast<uint8_t>((value >> 8) & 0xFF);
+  output[3] = static_cast<uint8_t>(value & 0xFF);
+}
+
 inline bool isAppCommand(uint8_t commandId) {
   return commandId == CMD_START || commandId == CMD_STOP ||
-         commandId == CMD_GET_STATE;
+         commandId == CMD_GET_STATE || commandId == CMD_DEFINE_EPC ||
+         commandId == CMD_GET_ATHLETES;
 }
 
 }  // namespace DetectProtocol

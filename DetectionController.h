@@ -150,7 +150,8 @@ public:
           total = athleteTotal(nowMs);
         }
 
-        athletes_[i] = {true, id, epc, 0, total, 0, false};
+        // 定义时刻即启动8秒去重，避免标签停留时立即被计为第1圈。
+        athletes_[i] = {true, id, epc, 0, total, nowMs, true};
         removeRecentEpc(epc);
         info = snapshot(athletes_[i]);
         return DefineResult::AthleteDefined;

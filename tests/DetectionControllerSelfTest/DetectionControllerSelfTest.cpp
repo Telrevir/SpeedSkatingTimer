@@ -25,12 +25,9 @@ int main() {
   assert(info.lapCount == 0);
   assert(info.totalCentiseconds == 0);
 
-  // 定义运动员会移除普通EPC记录，因此第一次运动员检测立即生效。
-  EpcEvent firstLap = controller.evaluateEpc(0x11111111UL, 10500);
-  assert(firstLap.type == EpcEventType::Athlete);
-  assert(firstLap.athlete.id == 1);
-  assert(firstLap.athlete.lapCount == 1);
-  assert(firstLap.athlete.totalCentiseconds == 0);
+  // 定义时刻开始运动员的8秒去重，不能立即计为第1圈。
+  assert(controller.evaluateEpc(0x11111111UL, 10500).type ==
+         EpcEventType::Ignored);
 
   // 后续运动员共用第一名运动员的时间偏移量。
   assert(controller.defineEpc(true, 0x22222222UL, 2, 11500, info) ==
@@ -39,13 +36,14 @@ int main() {
   assert(info.lapCount == 0);
   assert(info.totalCentiseconds == 100);
 
-  // 运动员的8秒记录独立于普通EPC记录。
+  // 定义后不足8秒完全静默，满8秒后才计为第1圈。
   assert(controller.evaluateEpc(0x11111111UL, 18499).type ==
          EpcEventType::Ignored);
-  EpcEvent secondLap = controller.evaluateEpc(0x11111111UL, 18500);
-  assert(secondLap.type == EpcEventType::Athlete);
-  assert(secondLap.athlete.lapCount == 2);
-  assert(secondLap.athlete.totalCentiseconds == 800);
+  EpcEvent firstLap = controller.evaluateEpc(0x11111111UL, 18500);
+  assert(firstLap.type == EpcEventType::Athlete);
+  assert(firstLap.athlete.id == 1);
+  assert(firstLap.athlete.lapCount == 1);
+  assert(firstLap.athlete.totalCentiseconds == 800);
 
   // 黑名单优先级最高，并从普通EPC记录中移除。
   assert(controller.evaluateEpc(0x33333333UL, 19000).type ==

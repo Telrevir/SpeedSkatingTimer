@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "types": ["node", "miniprogram-api-typings"],
+    "rootDir": ".",
+    "outDir": "build-test"
+  },
+  "include": ["miniprogram/**/*.ts", "tests/**/*.ts"]
+}

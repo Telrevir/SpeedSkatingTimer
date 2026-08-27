@@ -1,0 +1,9 @@
+<view class="page">
+  <view wx:if="{{rows.length}}" class="table">
+    <view class="table-row table-header"><text>排名</text><text>姓名</text><text>圈数</text><text>单圈</text><text>总用时</text><text>变化</text></view>
+    <view class="table-row" wx:for="{{rows}}" wx:key="id">
+      <text class="rank">{{item.rank}}</text><text>{{item.name}}<text wx:if="{{item.finished}}" class="finished">完成</text></text><text>{{item.lap}}</text><text>{{item.lapTime}}</text><text>{{item.totalTime}}</text><text>{{item.change}}</text>
+    </view>
+  </view>
+  <view wx:else class="empty"><text class="title">实时排名</text><text>连接设备并开始比赛后显示全部运动员成绩。</text></view>
+</view>

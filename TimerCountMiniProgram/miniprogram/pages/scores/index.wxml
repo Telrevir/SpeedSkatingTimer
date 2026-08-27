@@ -1,0 +1,17 @@
+<view class="page">
+  <view wx:if="{{races.length}}" class="race-list">
+    <view class="race-card" wx:for="{{races}}" wx:key="id">
+      <view class="race-head">
+        <view><text class="race-time">{{item.startedAt}}</text><text class="race-id">记录 {{item.id}}</text></view>
+        <view class="race-meta"><text>{{item.status}}</text><text>{{item.scoreCount}} 条</text></view>
+      </view>
+      <view wx:if="{{item.scores.length}}" class="score-table">
+        <view class="score-row score-header"><text>运动员</text><text>圈</text><text>单圈</text><text>总用时</text><text>名次</text></view>
+        <view class="score-row" wx:for="{{item.scores}}" wx:for-item="score" wx:key="key">
+          <text class="score-name">{{score.name}}</text><text>{{score.lap}}</text><text>{{score.lapTime}}</text><text>{{score.totalTime}}</text><text>{{score.rank}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+  <view wx:else class="empty"><text class="title">暂无本地成绩</text><text>开始比赛后，小程序会在本机保存逐圈记录。</text></view>
+</view>

@@ -1,0 +1,52 @@
+<view class="page">
+  <view class="connection-card">
+    <view>
+      <text class="eyebrow">BLE 计时设备</text>
+      <text class="connection-text">{{connectionText}}</text>
+    </view>
+    <button class="connect-button" size="mini" loading="{{connecting}}" bindtap="connectDevice">
+      {{connecting ? '连接中' : '连接'}}
+    </button>
+  </view>
+
+  <view class="state-card {{raceStateClass}}">
+    <text class="state-label">比赛状态</text>
+    <text class="state-value">{{raceStateText}}</text>
+    <text wx:if="{{finishLapText}}" class="finish-lap">{{finishLapText}}</text>
+  </view>
+
+  <view class="group-card">
+    <view>
+      <text class="section-title">当前分组</text>
+      <text class="group-name">{{groupName}}</text>
+    </view>
+    <button class="group-button" size="mini" bindtap="chooseGroup">选择分组</button>
+  </view>
+
+  <view class="leader-card">
+    <text class="section-title">当前领滑</text>
+    <view class="leader-grid">
+      <view class="metric"><text class="metric-label">姓名</text><text class="metric-value">{{leaderName}}</text></view>
+      <view class="metric"><text class="metric-label">圈数</text><text class="metric-value">{{leaderLap}}</text></view>
+      <view class="metric"><text class="metric-label">单圈</text><text class="metric-value">{{leaderLapTime}}</text></view>
+    </view>
+  </view>
+
+  <view class="ranking-card">
+    <view class="section-header"><text class="section-title">实时前五</text><text class="section-hint">小程序实时排名</text></view>
+    <view wx:if="{{topFive.length}}" class="top-five">
+      <view class="top-row" wx:for="{{topFive}}" wx:key="rank">
+        <text class="rank-number">{{item.rank}}</text>
+        <text class="rank-name">{{item.name}}<text wx:if="{{item.finished}}" class="finished-badge">完成</text></text>
+        <text class="rank-lap">{{item.lap}} 圈</text>
+        <text class="rank-time">{{item.time}}</text>
+      </view>
+    </view>
+    <view wx:else class="empty-ranking">比赛开始后，排名将在这里实时更新</view>
+  </view>
+
+  <view class="actions">
+    <button class="primary-action" disabled="{{!primaryEnabled}}" bindtap="toggleRace">{{primaryLabel}}</button>
+    <button class="reset-action" disabled="{{!resetEnabled}}" bindtap="resetRace">重置</button>
+  </view>
+</view>

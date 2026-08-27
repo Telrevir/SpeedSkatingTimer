@@ -1,0 +1,17 @@
+{
+  "name": "timer-count-mini-program",
+  "version": "0.1.0",
+  "private": true,
+  "description": "轮滑计时微信小程序",
+  "scripts": {
+    "build:test": "tsc -p tsconfig.test.json",
+    "test": "tsc -p tsconfig.test.json && node build-test/tests/run-tests.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "miniprogram-api-typings": "^5.2.1",
+    "typescript": "^5.9.0"
+  },
+  "packageManager": "pnpm@10.17.1"
+}

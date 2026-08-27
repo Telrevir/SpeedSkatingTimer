@@ -1,0 +1,27 @@
+{
+  "pages": [
+    "pages/race/index",
+    "pages/ranking/index",
+    "pages/athletes/index",
+    "pages/scores/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "轮滑计时",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f4f6f8"
+  },
+  "tabBar": {
+    "color": "#667085",
+    "selectedColor": "#2563eb",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      { "pagePath": "pages/race/index", "text": "比赛" },
+      { "pagePath": "pages/ranking/index", "text": "排名" },
+      { "pagePath": "pages/athletes/index", "text": "运动员" },
+      { "pagePath": "pages/scores/index", "text": "成绩" }
+    ]
+  },
+  "sitemapLocation": "sitemap.json"
+}

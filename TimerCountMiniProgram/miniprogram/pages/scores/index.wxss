@@ -1,0 +1,14 @@
+.page { padding: 28rpx; }
+.empty { padding: 80rpx 32rpx; border-radius: 24rpx; background: #fff; color: #667085; text-align: center; }
+.title { display: block; margin-bottom: 18rpx; color: #172033; font-size: 34rpx; font-weight: 700; }
+.race-list { display: flex; flex-direction: column; gap: 24rpx; }
+.race-card { overflow: hidden; border-radius: 24rpx; background: #fff; }
+.race-head { display: flex; justify-content: space-between; align-items: flex-start; padding: 26rpx; }
+.race-time, .race-id { display: block; }
+.race-time { color: #172033; font-size: 29rpx; font-weight: 700; }
+.race-id { margin-top: 6rpx; color: #98a2b3; font-size: 19rpx; }
+.race-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 6rpx; color: #475467; font-size: 22rpx; }
+.score-table { overflow-x: auto; border-top: 1rpx solid #edf0f4; }
+.score-row { display: grid; grid-template-columns: minmax(140rpx, 1fr) 60rpx 140rpx 150rpx 60rpx; align-items: center; min-width: 600rpx; min-height: 70rpx; padding: 0 20rpx; border-top: 1rpx solid #f2f4f7; color: #475467; font-size: 21rpx; }
+.score-header { background: #f8fafc; color: #667085; font-weight: 600; }
+.score-name { overflow: hidden; color: #172033; text-overflow: ellipsis; white-space: nowrap; }

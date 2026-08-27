@@ -1,0 +1,71 @@
+<view class="page">
+  <view class="storage-warning">运动员名单保存在本机。清理微信存储、删除小程序数据或更换手机可能导致名单丢失。</view>
+
+  <view class="toolbar">
+    <text class="form-title">{{editingId ? '编辑运动员 #' + editingId : '新建运动员'}}</text>
+    <input class="form-input" value="{{formName}}" maxlength="32" placeholder="运动员姓名" bindinput="updateName" disabled="{{!managementEnabled || busy}}" />
+    <input class="form-input" value="{{formEpc}}" maxlength="8" placeholder="8 位 EPC，例如 A1B2C3D4" bindinput="updateEpc" disabled="{{!managementEnabled || busy}}" />
+    <view class="form-actions">
+      <button wx:if="{{editingId}}" class="secondary" size="mini" disabled="{{busy}}" bindtap="cancelEdit">取消</button>
+      <button class="primary" size="mini" loading="{{busy}}" disabled="{{!managementEnabled || busy}}" bindtap="saveAthlete">{{editingId ? '保存修改' : '添加运动员'}}</button>
+    </view>
+    <button class="group-manage" size="mini" disabled="{{!managementEnabled || busy}}" bindtap="manageGroups">分组管理</button>
+  </view>
+
+  <view wx:if="{{groups.length}}" class="group-list">
+    <view class="group-list-title">已有分组</view>
+    <view class="group-chip" wx:for="{{groups}}" wx:key="id">{{item.name}}（{{item.count}}人）</view>
+  </view>
+
+  <view wx:if="{{athletes.length}}" class="athlete-list">
+    <view class="athlete-row" wx:for="{{athletes}}" wx:key="id">
+      <view>
+        <text class="athlete-name">{{item.name}}（#{{item.id}}）</text>
+        <text class="athlete-epc">{{item.epc}}</text>
+      </view>
+      <text>{{item.lap}} 圈</text>
+      <text>{{item.totalTime}}</text>
+      <view class="row-actions">
+        <button class="edit" size="mini" data-id="{{item.id}}" disabled="{{!managementEnabled || busy}}" bindtap="editAthlete">编辑</button>
+        <button class="delete" size="mini" data-id="{{item.id}}" disabled="{{!managementEnabled || busy}}" bindtap="archiveAthlete">归档</button>
+      </view>
+    </view>
+  </view>
+  <view wx:else class="empty">尚未添加运动员。</view>
+
+  <button class="archive-toggle" size="mini" bindtap="toggleArchived">{{showArchived ? '收起归档名单' : '查看归档名单'}}（{{archivedAthletes.length}}）</button>
+  <view wx:if="{{showArchived}}" class="athlete-list archived-list">
+    <block wx:if="{{archivedAthletes.length}}">
+      <view class="archived-row" wx:for="{{archivedAthletes}}" wx:key="id">
+        <view>
+          <text class="athlete-name">{{item.name}}（#{{item.id}}）</text>
+          <text class="athlete-epc">{{item.epc}}</text>
+        </view>
+        <view class="row-actions">
+          <button class="edit" size="mini" data-id="{{item.id}}" disabled="{{!managementEnabled || busy}}" bindtap="editAthlete">编辑</button>
+          <button class="restore" size="mini" data-id="{{item.id}}" disabled="{{!managementEnabled || busy}}" bindtap="restoreAthlete">恢复</button>
+        </view>
+      </view>
+    </block>
+    <view wx:else class="empty-inline">暂无归档运动员</view>
+  </view>
+
+  <view wx:if="{{groupModalVisible}}" class="modal-mask">
+    <view class="group-modal">
+      <text class="modal-title">{{editingGroupId ? '编辑分组' : '新建分组'}}</text>
+      <input class="form-input" value="{{groupFormName}}" placeholder="分组名称" bindinput="updateGroupName" />
+      <input class="form-input" value="{{groupSearch}}" placeholder="搜索姓名、EPC或ID" bindinput="updateGroupSearch" />
+      <scroll-view scroll-y class="group-candidates">
+        <view wx:for="{{groupCandidates}}" wx:key="id" class="candidate-row" data-id="{{item.id}}" bindtap="toggleGroupMember">
+          <checkbox checked="{{item.selected}}" />
+          <text>{{item.name}}（{{item.id}}）</text>
+        </view>
+      </scroll-view>
+      <view class="modal-actions">
+        <button size="mini" bindtap="closeGroupEditor">取消</button>
+        <button wx:if="{{editingGroupId}}" size="mini" class="danger" bindtap="deleteGroup">删除</button>
+        <button size="mini" class="primary" bindtap="saveGroup">保存</button>
+      </view>
+    </view>
+  </view>
+</view>

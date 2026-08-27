@@ -1,0 +1,5 @@
+node_modules/
+build-test/
+project.private.config.json
+.DS_Store
+*.log

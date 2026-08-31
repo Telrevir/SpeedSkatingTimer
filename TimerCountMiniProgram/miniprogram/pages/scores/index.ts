@@ -1,49 +1,52 @@
-import { formatCentiseconds } from '../../domain/time-format'
 import { scoreRepository } from '../../services/app-services'
 import type { RaceRecord } from '../../services/score-repository'
+import {
+  buildRaceHistoryTree,
+  type ExpandableRaceHistoryViewModel,
+} from './view-model'
 
 let unsubscribe: (() => void) | null = null
+let latestRecords: RaceRecord[] = []
+const expandedRaceIds = new Set<string>()
+const expandedLapKeys = new Set<string>()
 
 Page({
   data: {
-    races: [] as Array<{
-      id: string
-      startedAt: string
-      status: string
-      scoreCount: number
-      scores: Array<{ key: string; name: string; lap: number; lapTime: string; totalTime: string; rank: number }>
-    }>,
+    races: [] as ExpandableRaceHistoryViewModel[],
   },
   onLoad() {
+    expandedRaceIds.clear()
+    expandedLapKeys.clear()
     unsubscribe = scoreRepository.subscribe((records) => {
-      this.setData({ races: records.map(toViewModel) })
+      latestRecords = records
+      this.renderRaces()
     })
   },
   onUnload() {
     unsubscribe?.()
     unsubscribe = null
+    latestRecords = []
+  },
+  toggleRace(event: WechatMiniprogram.TouchEvent) {
+    const raceId = String(event.currentTarget.dataset.id ?? '')
+    if (!raceId) return
+    toggleSetValue(expandedRaceIds, raceId)
+    this.renderRaces()
+  },
+  toggleLap(event: WechatMiniprogram.TouchEvent) {
+    const lapKey = String(event.currentTarget.dataset.key ?? '')
+    if (!lapKey) return
+    toggleSetValue(expandedLapKeys, lapKey)
+    this.renderRaces()
+  },
+  renderRaces() {
+    this.setData({
+      races: buildRaceHistoryTree(latestRecords, expandedRaceIds, expandedLapKeys),
+    })
   },
 })
 
-function toViewModel(record: RaceRecord) {
-  return {
-    id: record.id,
-    startedAt: formatDate(record.startedAt),
-    status: record.finishedAt === null ? '进行中' : '已结束',
-    scoreCount: record.scores.length,
-    scores: record.scores.map((score, index) => ({
-      key: `${score.athleteId}-${score.lap}-${index}`,
-      name: score.name,
-      lap: score.lap,
-      lapTime: formatCentiseconds(score.lapCentiseconds),
-      totalTime: formatCentiseconds(score.totalCentiseconds),
-      rank: score.rank,
-    })),
-  }
-}
-
-function formatDate(timestamp: number): string {
-  const date = new Date(timestamp)
-  const pad = (value: number) => String(value).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+function toggleSetValue(values: Set<string>, value: string): void {
+  if (values.has(value)) values.delete(value)
+  else values.add(value)
 }

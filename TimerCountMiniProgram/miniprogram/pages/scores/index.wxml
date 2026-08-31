@@ -1,15 +1,37 @@
 <view class="page">
   <view wx:if="{{races.length}}" class="race-list">
-    <view class="race-card" wx:for="{{races}}" wx:key="id">
-      <view class="race-head">
-        <view><text class="race-time">{{item.startedAt}}</text><text class="race-id">记录 {{item.id}}</text></view>
-        <view class="race-meta"><text>{{item.status}}</text><text>{{item.scoreCount}} 条</text></view>
-      </view>
-      <view wx:if="{{item.scores.length}}" class="score-table">
-        <view class="score-row score-header"><text>运动员</text><text>圈</text><text>单圈</text><text>总用时</text><text>名次</text></view>
-        <view class="score-row" wx:for="{{item.scores}}" wx:for-item="score" wx:key="key">
-          <text class="score-name">{{score.name}}</text><text>{{score.lap}}</text><text>{{score.lapTime}}</text><text>{{score.totalTime}}</text><text>{{score.rank}}</text>
+    <view class="race-card" wx:for="{{races}}" wx:for-item="race" wx:key="id">
+      <view class="race-head" data-id="{{race.id}}" bindtap="toggleRace" hover-class="tree-head-active">
+        <view class="race-title">
+          <text class="tree-arrow">{{race.expanded ? '⌄' : '›'}}</text>
+          <view>
+            <text class="race-time">{{race.startedAt}}</text>
+            <text class="race-status">{{race.status}}</text>
+          </view>
         </view>
+        <view class="race-summary">
+          <view class="summary-item"><text class="summary-label">总圈数</text><text class="summary-value">{{race.totalLaps}}</text></view>
+          <view class="summary-item"><text class="summary-label">平均单圈</text><text class="summary-value">{{race.averageLapTime}}</text></view>
+        </view>
+      </view>
+
+      <view wx:if="{{race.expanded}}" class="lap-list">
+        <view wx:if="{{race.laps.length}}" class="lap-tree">
+          <view class="lap-card" wx:for="{{race.laps}}" wx:for-item="lap" wx:key="expandKey">
+            <view class="lap-head" data-key="{{lap.expandKey}}" bindtap="toggleLap" hover-class="tree-head-active">
+              <view class="lap-title"><text class="tree-arrow lap-arrow">{{lap.expanded ? '⌄' : '›'}}</text><text>第 {{lap.lap}} 圈</text></view>
+              <view class="leader-info"><text class="leader-label">领滑</text><text class="leader-name">{{lap.leaderName}}</text><text class="leader-time">{{lap.leaderLapTime}}</text></view>
+            </view>
+
+            <view wx:if="{{lap.expanded}}" class="score-table">
+              <view class="score-row score-header"><text>运动员</text><text>单圈用时</text><text>总用时</text><text>排名</text></view>
+              <view class="score-row" wx:for="{{lap.scores}}" wx:for-item="score" wx:key="key">
+                <text class="score-name">{{score.name}}</text><text>{{score.lapTime}}</text><text>{{score.totalTime}}</text><text class="score-rank">{{score.rank}}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+        <view wx:else class="race-empty">该场比赛暂无逐圈成绩</view>
       </view>
     </view>
   </view>

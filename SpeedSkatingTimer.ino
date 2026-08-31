@@ -185,6 +185,9 @@ void processDetectedEpc(uint32_t epc) {
     Serial.print(event.athlete.id);
     Serial.print("，圈数=");
     Serial.print(event.athlete.lapCount);
+    Serial.print("，单圈时长=");
+    Serial.print(event.athlete.lapCentiseconds);
+    Serial.print("百分秒");
     Serial.print("，总时长=");
     Serial.print(event.athlete.totalCentiseconds);
     Serial.println("百分秒");

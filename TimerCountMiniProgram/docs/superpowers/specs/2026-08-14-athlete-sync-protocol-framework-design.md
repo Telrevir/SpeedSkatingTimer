@@ -2,7 +2,7 @@
 
 ## 1. 目标
 
-小程序直接切换到新版固件协议，不保留旧版 `0x13` EPC 上报兼容模式。固件负责运动员圈数和总时长，小程序保留本地运动员主档、比赛分组、排名、领滑、结束圈和历史成绩职责。
+小程序直接切换到新版固件协议，不保留旧版 `0x13` EPC 上报兼容模式。固件负责运动员圈数、单圈时长和总时长，小程序保留本地运动员主档、比赛分组、排名、领滑、结束圈和历史成绩职责。
 
 未在本设计中修改的命令继续沿用当前协议定义，包括 `0x01` 开始检测、`0x02` 停止并重置、`0x03/0x04` 比赛状态和 `0xF0` 通用执行状态。
 
@@ -12,7 +12,7 @@
 | --- | --- | --- | --- |
 | `0x10` | 小程序→固件 | 7 字节 | 定义 EPC 是否为运动员，并携带运动员 ID |
 | `0x11` | 小程序→固件 | 0 字节 | 检测中请求全部运动员信息 |
-| `0x12` | 固件→小程序 | 6 字节 | 返回运动员 ID、圈数和总时长 |
+| `0x12` | 固件→小程序 | 9 字节 | 返回运动员 ID、圈数、单圈时长和总时长 |
 | `0x13` | 固件→小程序 | 1 字节 | 标记运动员列表传输开始或结束 |
 | `0x14` | 固件→小程序 | 4 字节 | 上报尚未定义的普通 EPC |
 
@@ -32,6 +32,7 @@ export interface AthleteClassification {
 export interface FirmwareAthleteScore {
   athleteId: number
   lapCount: number
+  lapCentiseconds: number
   totalCentiseconds: number
 }
 
@@ -51,7 +52,8 @@ byte5-byte6：运动员 ID，uint16 大端；非运动员固定填写 0x0000
 ```text
 byte0-byte1：运动员 ID，uint16 大端
 byte2：圈数，uint8
-byte3-byte5：总时长，uint24 大端百分秒
+byte3-byte5：单圈时长，uint24 大端百分秒
+byte6-byte8：总时长，uint24 大端百分秒
 ```
 
 `0x13` 解码规则：`0x01` 为 `receiving`，`0x00` 为 `idle`。其他长度或取值无效。
@@ -128,6 +130,7 @@ syncForegroundState(): Promise<void>
 applyFirmwareScore(
   athleteId: number,
   lapCount: number,
+  lapCentiseconds: number,
   totalCentiseconds: number,
 ): LocalAthleteScore | null
 ```
@@ -136,9 +139,8 @@ applyFirmwareScore(
 
 - 运动员必须属于当前比赛锁定名单；
 - 圈数直接采用固件值，小程序不再自行加一；
+- 单圈时长直接采用固件百分秒值，小程序不再根据相邻总时长差值推导；
 - 总时长直接采用固件百分秒值；
-- 同一运动员存在上一条成绩且圈数恰好增加 1 时，单圈时间使用总时长差；跨越多圈恢复时不能把多圈总差值显示成单圈时间，因此单圈时间为空；
-- 首次恢复成绩没有上一条基准时，单圈时间为空；
 - 排名按圈数降序、总时长升序、运动员 ID 升序；
 - 排名第一的运动员为领滑运动员；
 - 点击结束时捕获领滑运动员当前圈数作为 `finishLap`；

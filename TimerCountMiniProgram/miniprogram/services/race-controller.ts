@@ -22,6 +22,11 @@ export interface RaceTransport {
   connect(): Promise<void>
   send(packet: Uint8Array): Promise<void>
   onData(listener: (value: Uint8Array) => void): () => void
+  onDisconnect(listener: () => void): () => void
+}
+
+export interface ProtocolPacketLogger {
+  record(packet: Uint8Array): void
 }
 
 export class RaceController {
@@ -59,6 +64,7 @@ export class RaceController {
     private readonly scoreRepository?: ScoreRepository,
     private readonly groupStore?: GroupStore,
     private readonly activeSessionRepository?: ActiveRaceSessionRepository,
+    private readonly protocolLog?: ProtocolPacketLogger,
   ) {
     this.definitionQueue = activeSessionRepository
       ? new EpcDefinitionQueue(activeSessionRepository, async (definition) => {
@@ -70,8 +76,12 @@ export class RaceController {
       })
       : null
     this.transport.onData((chunk) => {
-      this.decoder.push(chunk).forEach((packet) => this.handlePacket(packet))
+      this.decoder.push(chunk).forEach((packet) => {
+        this.protocolLog?.record(encodePacket(packet.commandId, packet.payload))
+        this.handlePacket(packet)
+      })
     })
+    this.transport.onDisconnect(() => this.handleDisconnect())
     this.athleteCatalog.subscribe((active) => this.athleteStore.replaceProfiles(active))
   }
 
@@ -149,6 +159,9 @@ export class RaceController {
         activeGroupId: activeGroup?.id ?? null,
         athleteDefinitionCount: 0,
         nonAthleteDefinitionCount: 0,
+        lapCorrectionStates: [],
+        localPhase: 'running',
+        finishLap: null,
       })
       this.scoring.start(participantIds)
       this.raceHistoryFinished = false
@@ -160,6 +173,7 @@ export class RaceController {
 
   endRace(): void {
     this.scoring.beginFinishing()
+    this.persistRaceProgress()
     this.syncViews()
     this.finishHistoryIfNeeded()
   }
@@ -183,13 +197,51 @@ export class RaceController {
     await operation
   }
 
+  private handleDisconnect(): void {
+    const error = new Error('蓝牙连接已断开')
+    this.decoder.reset()
+
+    const pendingRaceState = this.pendingRaceState
+    this.pendingRaceState = null
+    this.raceStateRequest = null
+    this.foregroundSync = null
+    if (pendingRaceState) {
+      clearTimeout(pendingRaceState.timeoutId)
+      pendingRaceState.reject(error)
+    }
+
+    const pendingAthleteTransfer = this.pendingAthleteTransfer
+    this.pendingAthleteTransfer = null
+    if (pendingAthleteTransfer) {
+      clearTimeout(pendingAthleteTransfer.timeoutId)
+      pendingAthleteTransfer.reject(error)
+    }
+
+    const pendingControl = this.pendingControl
+    this.pendingControl = null
+    if (pendingControl) {
+      clearTimeout(pendingControl.timeoutId)
+      pendingControl.reject(error)
+    }
+
+    this.sendQueue = Promise.resolve()
+    this.raceStore.setConnectionState(ConnectionState.Disconnected)
+    this.raceStore.setFirmwareState(FirmwareDetectionState.Unknown)
+    this.raceStore.setAthleteTransferState('idle')
+  }
+
   private async performForegroundSync(): Promise<void> {
     const firmwareState = await this.requestFirmwareState()
     if (firmwareState !== FirmwareDetectionState.Detecting) return
     const session = this.activeSessionRepository?.load()
     if (session) {
       this.groupStore?.select(session.activeGroupId)
-      this.scoring.resume(session.participantIds)
+      this.scoring.resume(
+        session.participantIds,
+        session.lapCorrectionStates ?? [],
+        session.localPhase ?? 'running',
+        session.finishLap ?? null,
+      )
       this.syncViews()
     }
     await this.requestAllAthletes()
@@ -214,17 +266,24 @@ export class RaceController {
       resolveState = resolve
       rejectState = reject
     })
+    void response.catch(() => undefined)
+    let pending!: {
+      resolve: (state: FirmwareDetectionState) => void
+      reject: (error: Error) => void
+      timeoutId: ReturnType<typeof setTimeout>
+    }
     const timeoutId = setTimeout(() => {
-      if (!this.pendingRaceState) return
+      if (this.pendingRaceState !== pending) return
       this.pendingRaceState = null
       rejectState(new Error('设备未返回比赛状态'))
     }, 10_000)
-    this.pendingRaceState = { resolve: resolveState, reject: rejectState, timeoutId }
+    pending = { resolve: resolveState, reject: rejectState, timeoutId }
+    this.pendingRaceState = pending
     try {
       await this.sendCommand(CommandId.GetRaceState)
     } catch (error) {
       clearTimeout(timeoutId)
-      this.pendingRaceState = null
+      if (this.pendingRaceState === pending) this.pendingRaceState = null
       rejectState(error instanceof Error ? error : new Error('比赛状态查询发送失败'))
     }
     return response
@@ -238,22 +297,30 @@ export class RaceController {
       resolveTransfer = resolve
       rejectTransfer = reject
     })
+    void completion.catch(() => undefined)
+    let pending!: {
+      started: boolean
+      resolve: () => void
+      reject: (error: Error) => void
+      timeoutId: ReturnType<typeof setTimeout>
+    }
     const timeoutId = setTimeout(() => {
-      if (!this.pendingAthleteTransfer) return
+      if (this.pendingAthleteTransfer !== pending) return
       this.pendingAthleteTransfer = null
       rejectTransfer(new Error('运动员状态传输超时'))
     }, 10_000)
-    this.pendingAthleteTransfer = {
+    pending = {
       started: false,
       resolve: resolveTransfer,
       reject: rejectTransfer,
       timeoutId,
     }
+    this.pendingAthleteTransfer = pending
     try {
       await this.sendCommand(CommandId.GetAllAthletes)
     } catch (error) {
       clearTimeout(timeoutId)
-      this.pendingAthleteTransfer = null
+      if (this.pendingAthleteTransfer === pending) this.pendingAthleteTransfer = null
       rejectTransfer(error instanceof Error ? error : new Error('运动员状态查询发送失败'))
     }
     return completion
@@ -271,23 +338,32 @@ export class RaceController {
       resolveConfirmation = resolve
       rejectConfirmation = reject
     })
+    void confirmation.catch(() => undefined)
+    let pending!: {
+      commandId: CommandId
+      resolve: () => void
+      reject: (error: Error) => void
+      onSuccess: () => void
+      timeoutId: ReturnType<typeof setTimeout>
+    }
     const timeoutId = setTimeout(() => {
-      if (this.pendingControl?.commandId !== commandId) return
+      if (this.pendingControl !== pending) return
       this.pendingControl = null
       rejectConfirmation(new Error('设备未确认控制操作'))
     }, 10_000)
-    this.pendingControl = {
+    pending = {
       commandId,
       resolve: resolveConfirmation,
       reject: rejectConfirmation,
       onSuccess,
       timeoutId,
     }
+    this.pendingControl = pending
     try {
       await this.sendCommand(commandId, payload)
     } catch (error) {
       clearTimeout(timeoutId)
-      this.pendingControl = null
+      if (this.pendingControl === pending) this.pendingControl = null
       throw error
     }
     return confirmation
@@ -359,20 +435,25 @@ export class RaceController {
     const score = this.scoring.applyFirmwareScore(
       profile.id,
       firmwareScore.lapCount,
+      firmwareScore.lapCentiseconds,
       firmwareScore.totalCentiseconds,
     )
     if (!score) return
 
+    this.persistRaceProgress()
     this.syncViews()
     this.scoreRepository?.appendScore({
       athleteId: profile.id,
       name: profile.name,
       epc: profile.epc,
-      lap: score.lapCount,
-      lapCentiseconds: score.lapCentiseconds ?? -1,
+      lap: score.correctedLapCount,
+      rawLap: score.rawLapCount,
+      correctionOffset: score.correctionOffset,
+      correctedLap: score.correctedLapCount,
+      lapCentiseconds: score.lapCentiseconds,
       totalCentiseconds: score.totalCentiseconds,
       rank: score.currentRank,
-    }, false)
+    }, this.raceStore.snapshot.athleteTransferState === 'receiving')
     this.finishHistoryIfNeeded()
   }
 
@@ -440,6 +521,16 @@ export class RaceController {
     if (this.scoring.phase !== 'finished' || this.raceHistoryFinished) return
     this.scoreRepository?.finishRace()
     this.raceHistoryFinished = true
+  }
+
+  private persistRaceProgress(): void {
+    const phase = this.scoring.phase
+    if (phase === 'idle') return
+    this.activeSessionRepository?.saveRaceProgress(
+      this.scoring.correctionSnapshot,
+      phase,
+      this.scoring.finishLap,
+    )
   }
 }
 

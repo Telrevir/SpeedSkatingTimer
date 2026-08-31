@@ -187,9 +187,10 @@ public:
   }
 
   bool sendAthlete(const AthleteInfo& athlete) {
-    uint8_t payload[6];
+    uint8_t payload[9];
     DetectProtocol::buildAthletePayload(
-      athlete.id, athlete.lapCount, athlete.totalCentiseconds, payload);
+      athlete.id, athlete.lapCount, athlete.lapCentiseconds,
+      athlete.totalCentiseconds, payload);
     return sendPacket(DetectProtocol::CMD_ATHLETE, payload, sizeof(payload));
   }
 

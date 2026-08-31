@@ -15,6 +15,12 @@ class RecordingBluetoothApi implements WechatBluetoothApi {
   readonly calls: string[] = []
   readonly writes: Uint8Array[] = []
   readonly writeTargets: string[] = []
+  disconnectOnNextWrite = false
+  disconnectWhileGettingServices = false
+  private delayedWrite: {
+    started: () => void
+    completion: Promise<void>
+  } | null = null
   private valueListener: ((event: BleCharacteristicValueEvent) => void) | null = null
   private connectionListener: ((event: BleConnectionStateEvent) => void) | null = null
 
@@ -30,6 +36,10 @@ class RecordingBluetoothApi implements WechatBluetoothApi {
   }
   async getServices(deviceId: string): Promise<BleGattService[]> {
     this.calls.push(`getServices:${deviceId}`)
+    if (this.disconnectWhileGettingServices) {
+      this.disconnectWhileGettingServices = false
+      this.emitConnection(false, deviceId)
+    }
     return [{ uuid: '0000FFE0-0000-1000-8000-00805F9B34FB' }]
   }
   async getCharacteristics(deviceId: string, serviceId: string): Promise<BleGattCharacteristic[]> {
@@ -50,6 +60,16 @@ class RecordingBluetoothApi implements WechatBluetoothApi {
   ): Promise<void> {
     this.writeTargets.push(characteristicId)
     this.writes.push(value)
+    const delayedWrite = this.delayedWrite
+    if (delayedWrite) {
+      this.delayedWrite = null
+      delayedWrite.started()
+      await delayedWrite.completion
+    }
+    if (this.disconnectOnNextWrite) {
+      this.disconnectOnNextWrite = false
+      this.emitConnection(false)
+    }
   }
   onCharacteristicValue(listener: (event: BleCharacteristicValueEvent) => void): void {
     this.valueListener = listener
@@ -66,6 +86,19 @@ class RecordingBluetoothApi implements WechatBluetoothApi {
       characteristicId: '0000FFE1-0000-1000-8000-00805F9B34FB',
       value,
     })
+  }
+
+  emitConnection(connected: boolean, deviceId = 'device-1'): void {
+    this.connectionListener?.({ deviceId, connected })
+  }
+
+  delayNextWrite(): { started: Promise<void>; release: () => void } {
+    let markStarted!: () => void
+    let release!: () => void
+    const started = new Promise<void>((resolve) => { markStarted = resolve })
+    const completion = new Promise<void>((resolve) => { release = resolve })
+    this.delayedWrite = { started: markStarted, completion }
+    return { started, release }
   }
 }
 
@@ -117,4 +150,64 @@ test('forwards notification bytes to registered data listeners', async () => {
   api.emitValue(Uint8Array.of(0xaa, 0x08))
 
   assert.deepEqual(received, [[0xaa, 0x08]])
+})
+
+test('returns to disconnected state and invalidates GATT writes when the active device disconnects', async () => {
+  const api = new RecordingBluetoothApi()
+  const transport = new BleTransport(api)
+  await transport.connect()
+
+  api.emitConnection(false, 'another-device')
+  assert.equal(transport.state, 'connected')
+
+  api.emitConnection(false)
+
+  assert.equal(transport.state, 'disconnected')
+  await assert.rejects(
+    () => transport.send(Uint8Array.of(0xaa)),
+    /not connected/,
+  )
+})
+
+test('stops a chunked write immediately when the active connection drops', async () => {
+  const api = new RecordingBluetoothApi()
+  const transport = new BleTransport(api)
+  await transport.connect()
+  api.disconnectOnNextWrite = true
+
+  await assert.rejects(
+    () => transport.send(Uint8Array.from({ length: 45 }, (_, index) => index)),
+    /not connected/,
+  )
+
+  assert.equal(api.writes.length, 1)
+})
+
+test('does not commit a connection that drops during GATT setup', async () => {
+  const api = new RecordingBluetoothApi()
+  api.disconnectWhileGettingServices = true
+  const transport = new BleTransport(api)
+
+  await assert.rejects(
+    () => transport.connect(),
+    /disconnected during setup/,
+  )
+
+  assert.equal(transport.state, 'disconnected')
+})
+
+test('does not resume an old chunked write after reconnecting the same device', async () => {
+  const api = new RecordingBluetoothApi()
+  const transport = new BleTransport(api)
+  await transport.connect()
+  const gate = api.delayNextWrite()
+  const sending = transport.send(Uint8Array.from({ length: 45 }, (_, index) => index))
+  await gate.started
+
+  api.emitConnection(false)
+  await transport.connect()
+  gate.release()
+
+  await assert.rejects(() => sending, /not connected/)
+  assert.equal(api.writes.length, 1)
 })

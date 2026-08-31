@@ -4,7 +4,7 @@
       <text class="eyebrow">BLE 计时设备</text>
       <text class="connection-text">{{connectionText}}</text>
     </view>
-    <button class="connect-button" size="mini" loading="{{connecting}}" bindtap="connectDevice">
+    <button wx:if="{{showConnectButton}}" class="connect-button" size="mini" loading="{{connecting}}" bindtap="connectDevice">
       {{connecting ? '连接中' : '连接'}}
     </button>
   </view>
@@ -27,7 +27,10 @@
     <text class="section-title">当前领滑</text>
     <view class="leader-grid">
       <view class="metric"><text class="metric-label">姓名</text><text class="metric-value">{{leaderName}}</text></view>
-      <view class="metric"><text class="metric-label">圈数</text><text class="metric-value">{{leaderLap}}</text></view>
+      <view class="metric">
+        <text class="metric-label">圈数</text>
+        <text class="metric-value">{{leaderRawLap}}<text wx:if="{{leaderCorrectionOffset > 0}}" class="lap-correction">+{{leaderCorrectionOffset}}</text></text>
+      </view>
       <view class="metric"><text class="metric-label">单圈</text><text class="metric-value">{{leaderLapTime}}</text></view>
     </view>
   </view>
@@ -38,7 +41,7 @@
       <view class="top-row" wx:for="{{topFive}}" wx:key="rank">
         <text class="rank-number">{{item.rank}}</text>
         <text class="rank-name">{{item.name}}<text wx:if="{{item.finished}}" class="finished-badge">完成</text></text>
-        <text class="rank-lap">{{item.lap}} 圈</text>
+        <text class="rank-lap">{{item.rawLap}}<text wx:if="{{item.correctionOffset > 0}}" class="lap-correction">+{{item.correctionOffset}}</text> 圈</text>
         <text class="rank-time">{{item.time}}</text>
       </view>
     </view>

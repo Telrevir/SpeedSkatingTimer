@@ -14,14 +14,29 @@ import { AthleteRepository } from '../miniprogram/services/athlete-repository'
 import { RaceController, type RaceTransport } from '../miniprogram/services/race-controller'
 import { ScoreRepository, type ScoreStorage } from '../miniprogram/services/score-repository'
 import { GroupStore, type GroupStorage } from '../miniprogram/stores/group-store'
+import { ProtocolLogStore } from '../miniprogram/stores/protocol-log-store'
 
 class MemoryRaceTransport implements RaceTransport {
   readonly sent: Uint8Array[] = []
   failNextCommandId: CommandId | null = null
+  private delayedFailure: {
+    commandId: CommandId
+    started: () => void
+    completion: Promise<void>
+  } | null = null
   private dataListener: ((value: Uint8Array) => void) | null = null
+  private readonly disconnectListeners = new Set<() => void>()
 
   async connect(): Promise<void> {}
   async send(packet: Uint8Array): Promise<void> {
+    const delayedFailure = this.delayedFailure
+    if (delayedFailure && delayedFailure.commandId === packet[1]) {
+      this.delayedFailure = null
+      this.sent.push(packet)
+      delayedFailure.started()
+      await delayedFailure.completion
+      throw new Error('delayed send failed')
+    }
     if (packet[1] === this.failNextCommandId) {
       this.failNextCommandId = null
       throw new Error('send failed')
@@ -32,7 +47,20 @@ class MemoryRaceTransport implements RaceTransport {
     this.dataListener = listener
     return () => { this.dataListener = null }
   }
+  onDisconnect(listener: () => void): () => void {
+    this.disconnectListeners.add(listener)
+    return () => this.disconnectListeners.delete(listener)
+  }
   emit(value: Uint8Array): void { this.dataListener?.(value) }
+  disconnect(): void { this.disconnectListeners.forEach((listener) => listener()) }
+  delayFailureForNext(commandId: CommandId): { started: Promise<void>; release: () => void } {
+    let markStarted!: () => void
+    let release!: () => void
+    const started = new Promise<void>((resolve) => { markStarted = resolve })
+    const completion = new Promise<void>((resolve) => { release = resolve })
+    this.delayedFailure = { commandId, started: markStarted, completion }
+    return { started, release }
+  }
 }
 
 class MemoryCatalogStorage implements AthleteCatalogStorage {
@@ -88,12 +116,16 @@ async function fixture(athletes: Array<[string, string]> = [['张三', '3333F337
   const scoreRepository = new ScoreRepository(new MemoryScoreStorage(), () => 1000)
   const groupStore = new GroupStore(new MemoryGroupStorage(), () => 1000)
   const activeSessionRepository = new ActiveRaceSessionRepository(new MemoryActiveSessionStorage())
+  const protocolLog = new ProtocolLogStore(500, () => (
+    new Date(2026, 7, 27, 15, 4, 5, 67).getTime()
+  ))
   const controller = new RaceController(
     transport,
     catalog,
     scoreRepository,
     groupStore,
     activeSessionRepository,
+    protocolLog,
   )
   return {
     transport,
@@ -101,6 +133,7 @@ async function fixture(athletes: Array<[string, string]> = [['张三', '3333F337
     scoreRepository,
     groupStore,
     activeSessionRepository,
+    protocolLog,
     controller,
   }
 }
@@ -120,11 +153,15 @@ function athleteInfoEvent(
   athleteId: number,
   lapCount: number,
   totalCentiseconds: number,
+  lapCentiseconds = 0,
 ): Uint8Array {
   return encodePacket(CommandId.AthleteInfo, Uint8Array.of(
     (athleteId >> 8) & 0xff,
     athleteId & 0xff,
     lapCount,
+    (lapCentiseconds >> 16) & 0xff,
+    (lapCentiseconds >> 8) & 0xff,
+    lapCentiseconds & 0xff,
     (totalCentiseconds >> 16) & 0xff,
     (totalCentiseconds >> 8) & 0xff,
     totalCentiseconds & 0xff,
@@ -165,6 +202,90 @@ test('keeps a successful BLE connection marked connected when protocol synchroni
 
   assert.equal(controller.snapshot.connectionState, ConnectionState.Connected)
   assert.equal(controller.snapshot.syncError, 'send failed')
+})
+
+test('returns the controller to disconnected and unknown firmware state when BLE drops', async () => {
+  const { controller, transport } = await fixture()
+  const connecting = controller.connect()
+  await Promise.resolve()
+  transport.emit(encodePacket(CommandId.RaceState, Uint8Array.of(FirmwareDetectionState.Stopped)))
+  await connecting
+
+  transport.disconnect()
+
+  assert.equal(controller.snapshot.connectionState, ConnectionState.Disconnected)
+  assert.equal(controller.snapshot.firmwareState, FirmwareDetectionState.Unknown)
+})
+
+test('preserves the active race session and local scoring state when BLE drops', async () => {
+  const { controller, transport, activeSessionRepository } = await fixture()
+  await startRace(controller, transport)
+  transport.emit(athleteInfoEvent(1, 0, 123))
+  const athletesBeforeDisconnect = controller.athletesSnapshot
+  const sessionBeforeDisconnect = activeSessionRepository.load()
+
+  transport.disconnect()
+
+  assert.equal(controller.snapshot.localPhase, 'running')
+  assert.deepEqual(controller.athletesSnapshot, athletesBeforeDisconnect)
+  assert.deepEqual(activeSessionRepository.load(), sessionBeforeDisconnect)
+})
+
+test('cancels stale foreground sync so reconnect sends a fresh race-state query', async () => {
+  const { controller, transport } = await fixture()
+  const firstOutcome = controller.connect().then(
+    () => null,
+    (error: unknown) => error,
+  )
+  await waitForSentCommand(transport, CommandId.GetRaceState)
+
+  transport.disconnect()
+  const reconnecting = controller.connect()
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  const queryCount = transport.sent.filter((packet) => packet[1] === CommandId.GetRaceState).length
+
+  transport.emit(encodePacket(CommandId.RaceState, Uint8Array.of(FirmwareDetectionState.Stopped)))
+  await reconnecting
+  const firstError = await firstOutcome
+
+  assert.equal(queryCount, 2)
+  assert.match(firstError instanceof Error ? firstError.message : '', /蓝牙连接已断开/)
+  assert.equal(controller.snapshot.connectionState, ConnectionState.Connected)
+})
+
+test('a delayed failure from the old connection cannot clear the new race-state request', async () => {
+  const { controller, transport } = await fixture()
+  const gate = transport.delayFailureForNext(CommandId.GetRaceState)
+  const firstOutcome = controller.connect().catch((error: unknown) => error)
+  await gate.started
+
+  transport.disconnect()
+  const reconnecting = controller.connect()
+  await waitForCondition(
+    () => transport.sent.filter((packet) => packet[1] === CommandId.GetRaceState).length === 2,
+    'Reconnect did not send a fresh race-state query',
+  )
+  type PendingProbe = {
+    resolve: (state: FirmwareDetectionState) => void
+    timeoutId: ReturnType<typeof setTimeout>
+  }
+  const probe = controller as unknown as { pendingRaceState: PendingProbe | null }
+  const newPending = probe.pendingRaceState
+  assert.ok(newPending)
+
+  gate.release()
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  const retainedPending = probe.pendingRaceState
+  transport.emit(encodePacket(CommandId.RaceState, Uint8Array.of(FirmwareDetectionState.Stopped)))
+  if (retainedPending !== newPending) {
+    clearTimeout(newPending.timeoutId)
+    newPending.resolve(FirmwareDetectionState.Stopped)
+  }
+  await reconnecting
+  await firstOutcome
+
+  assert.equal(retainedPending, newPending)
 })
 
 test('shares one in-flight 0x03 between page polling and foreground synchronization', async () => {
@@ -312,6 +433,9 @@ test('waits for matching Start acknowledgement before creating the local race', 
     activeGroupId: null,
     athleteDefinitionCount: 0,
     nonAthleteDefinitionCount: 0,
+    lapCorrectionStates: [],
+    localPhase: 'running',
+    finishLap: null,
   })
 })
 
@@ -366,20 +490,20 @@ test('Reset clears local data and active session only after a successful Stop ac
   assert.equal(activeSessionRepository.load(), null)
 })
 
-test('uses firmware lap count and calculates adjacent lap time from 0x12', async () => {
+test('uses firmware lap count, single-lap time and total time from 0x12', async () => {
   const { controller, transport } = await fixture()
   await startRace(controller, transport)
 
   transport.emit(athleteInfoEvent(1, 0, 100))
   let athlete = controller.athletesSnapshot[0]!
   assert.equal(athlete.lapCount, 0)
-  assert.equal(athlete.lapCentiseconds, -1)
+  assert.equal(athlete.lapCentiseconds, 0)
   assert.equal(athlete.currentRank, 1)
 
-  transport.emit(athleteInfoEvent(1, 1, 5100))
+  transport.emit(athleteInfoEvent(1, 1, 5100, 4900))
   athlete = controller.athletesSnapshot[0]!
   assert.equal(athlete.lapCount, 1)
-  assert.equal(athlete.lapCentiseconds, 5000)
+  assert.equal(athlete.lapCentiseconds, 4900)
   assert.equal(controller.snapshot.leaderAthleteId, athlete.id)
 })
 
@@ -418,9 +542,9 @@ test('processes 0x12 identically inside and outside a 0x13 transfer', async () =
 
   transport.emit(athleteInfoEvent(1, 0, 100))
   transport.emit(encodePacket(CommandId.AthleteTransferState, Uint8Array.of(0x01)))
-  transport.emit(athleteInfoEvent(1, 1, 5100))
+  transport.emit(athleteInfoEvent(1, 1, 5100, 5000))
   transport.emit(encodePacket(CommandId.AthleteTransferState, Uint8Array.of(0x00)))
-  transport.emit(athleteInfoEvent(1, 2, 10100))
+  transport.emit(athleteInfoEvent(1, 2, 10100, 5000))
 
   const athlete = controller.athletesSnapshot[0]!
   assert.equal(athlete.lapCount, 2)
@@ -569,4 +693,31 @@ test('maps the new timeout and RFID communication command statuses', async () =>
   )
   transport.emit(encodePacket(CommandId.CommandResult, Uint8Array.of(CommandId.StartDetection, 0x0f)))
   await assert.rejects(communicationError, /RFID通信错误/)
+})
+
+test('logs every complete valid received protocol packet after BLE reassembly', async () => {
+  const { transport, protocolLog } = await fixture()
+
+  transport.emit(Uint8Array.of(0xaa, 0x04))
+  assert.deepEqual(protocolLog.snapshot, [])
+
+  transport.emit(Uint8Array.of(
+    0x01, 0x01, 0x06, 0xf9,
+    0xaa, 0xf0, 0x02, 0x01, 0x00, 0xf3, 0xf9,
+  ))
+  transport.emit(Uint8Array.of(0xaa, 0x04, 0x01, 0x00, 0x00, 0xf9))
+
+  assert.deepEqual(protocolLog.snapshot.map(({ timestamp, packetHex }) => ({
+    timestamp,
+    packetHex,
+  })), [
+    {
+      timestamp: '2026-08-27 15:04:05.067',
+      packetHex: 'AA F0 02 01 00 F3 F9',
+    },
+    {
+      timestamp: '2026-08-27 15:04:05.067',
+      packetHex: 'AA 04 01 01 06 F9',
+    },
+  ])
 })

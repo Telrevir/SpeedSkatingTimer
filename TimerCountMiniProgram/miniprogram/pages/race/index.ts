@@ -1,8 +1,10 @@
 import {
   ConnectionState,
   FirmwareDetectionState,
+  getConnectionPresentation,
   getRaceControlsState,
 } from '../../domain/race-state'
+import type { Athlete } from '../../domain/athlete'
 import { formatRelativeTotalTime } from '../../domain/relative-total-time'
 import { formatCentiseconds } from '../../domain/time-format'
 import { groupStore, raceController } from '../../services/app-services'
@@ -17,6 +19,7 @@ Page({
   data: {
     connecting: false,
     connectionText: '未连接 ESP32-LORA-BRIDGE',
+    showConnectButton: true,
     raceStateText: '未连接设备',
     raceStateClass: 'state-disconnected',
     finishLapText: '',
@@ -25,9 +28,17 @@ Page({
     resetEnabled: false,
     groupName: '全部运动员',
     leaderName: '—',
-    leaderLap: '—',
+    leaderRawLap: '—',
+    leaderCorrectionOffset: 0,
     leaderLapTime: '—',
-    topFive: [] as Array<{ rank: number; name: string; lap: string; time: string; finished: boolean }>,
+    topFive: [] as Array<{
+      rank: number
+      name: string
+      rawLap: string
+      correctionOffset: number
+      time: string
+      finished: boolean
+    }>,
   },
 
   onLoad() {
@@ -43,13 +54,17 @@ Page({
           .filter(({ currentRank, hasRaceScore }) => currentRank > 0 && hasRaceScore)
           .sort((left, right) => left.currentRank - right.currentRank)
           .slice(0, 5)
-          .map((athlete) => ({
-            rank: athlete.currentRank,
-            name: athlete.name,
-            lap: String(athlete.lapCount),
-            time: formatRelativeTotalTime(athlete, leader),
-            finished: athlete.finished,
-          })),
+          .map((athlete) => {
+            const lap = lapPresentation(athlete)
+            return {
+              rank: athlete.currentRank,
+              name: athlete.name,
+              rawLap: lap.rawLap,
+              correctionOffset: lap.correctionOffset,
+              time: formatRelativeTotalTime(athlete, leader),
+              finished: athlete.finished,
+            }
+          }),
       })
       this.renderSnapshot(raceController.snapshot)
     })
@@ -127,17 +142,18 @@ Page({
       snapshot.firmwareState,
       snapshot.localPhase,
     )
+    const connection = getConnectionPresentation(snapshot.connectionState)
     const presentation = raceStatePresentation(snapshot)
     const leader = raceController.athletesSnapshot.find(({ id }) => id === snapshot.leaderAthleteId)
+    const leaderLap = leader ? lapPresentation(leader) : null
     this.setData({
-      connectionText: snapshot.connectionState === ConnectionState.Connected
-        ? '已连接 ESP32-LORA-BRIDGE'
-        : this.data.connectionText,
+      ...connection,
       raceStateText: presentation.text,
       raceStateClass: presentation.className,
       finishLapText: snapshot.finishLap === null ? '' : `结束圈数：${snapshot.finishLap}`,
       leaderName: leader?.name ?? '—',
-      leaderLap: snapshot.leaderLapCount === null ? '—' : String(snapshot.leaderLapCount),
+      leaderRawLap: leaderLap?.rawLap ?? '—',
+      leaderCorrectionOffset: leaderLap?.correctionOffset ?? 0,
       leaderLapTime: snapshot.leaderLapCentiseconds === null
         ? '—'
         : formatCentiseconds(snapshot.leaderLapCentiseconds),
@@ -163,5 +179,15 @@ function raceStatePresentation(snapshot: RaceSnapshot): { text: string; classNam
     case 'finishing': return { text: '等待其他运动员完成', className: 'state-waiting' }
     case 'finished': return { text: '比赛已结束', className: 'state-finished' }
     default: return { text: '比赛未开始', className: 'state-idle' }
+  }
+}
+
+function lapPresentation(athlete: Athlete): { rawLap: string; correctionOffset: number } {
+  const rawLap = athlete.rawLapCount ?? athlete.lapCount
+  const correctedLap = athlete.correctedLapCount ?? athlete.lapCount
+  const displayedRawLap = Math.min(rawLap, correctedLap)
+  return {
+    rawLap: displayedRawLap < 0 ? '—' : String(displayedRawLap),
+    correctionOffset: Math.max(0, correctedLap - displayedRawLap),
   }
 }

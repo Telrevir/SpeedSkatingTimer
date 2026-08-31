@@ -109,11 +109,13 @@ inline bool decodeDefineEpc(const uint8_t* payload, uint8_t payloadLength,
 }
 
 inline void buildAthletePayload(uint16_t id, uint8_t lapCount,
+                                uint32_t lapCentiseconds,
                                 uint32_t totalCentiseconds,
                                 uint8_t* output) {
   writeUInt16BE(output, id);
   output[2] = lapCount;
-  writeUInt24BE(output + 3, totalCentiseconds);
+  writeUInt24BE(output + 3, lapCentiseconds);
+  writeUInt24BE(output + 6, totalCentiseconds);
 }
 
 inline void buildEpcPayload(uint32_t epc, uint8_t* output) {

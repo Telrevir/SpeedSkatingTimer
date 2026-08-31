@@ -1,6 +1,6 @@
 # AGENT 行动准则
 
-该部分为关键行动准则。每次阅读、计划、编写或修改代码前，应优先参考本文档，并结合 `CurrentTask.md`、`ARCHITECTURE.md`、`LORAProtocol.txt`、`RFIDPollingNotes.md` 判断当前项目状态。
+该部分为关键行动准则。每次阅读、计划、编写或修改代码前，应优先参考本文档，并结合 `CurrentTask.md`、`ARCHITECTURE.md`、`LORAProtocol-byte.md`、`RFIDPollingNotes.md` 判断当前项目状态。
 
 
 
@@ -38,19 +38,20 @@ HardwareSerial::onReceive()
 
 ### 4. 当前工程边界
 
-当前项目核心目标是速度滑冰计时系统，主要模块包括：
+当前分支为 `DetectOnly`，核心目标是速度滑冰计时系统的检测侧精简固件。当前工程只负责控制 RFID 读写器、维护临时运动员列表和单次比赛成绩列表、执行 EPC 8 秒静默规则，并通过 LoRa 字节协议上报检测结果。
+
+当前主要模块包括：
 
 ```text
 SpeedSkatingTimer.ino
-AthleteManager.h
-TimingLogic.h
+DetectionController.h
+DetectProtocol.h
 RFIDReader.h
 LoraManager.h
-StorageManager.h
 config.h
 ```
 
-除非用户明确要求，不要恢复 Web/WiFi/HTTP/JSON/LittleFS 相关功能。
+除非用户明确要求，不要恢复完整计时主线中的 `AthleteManager`、`TimingLogic`、`StorageManager`、TF 卡存储、运动员姓名、排名、领滑、Web/WiFi/HTTP/JSON/LittleFS 等功能。
 
 
 ## 二. 编程行为准则
@@ -64,9 +65,9 @@ config.h
 如修改会影响以下核心链路，应先说明影响范围：
 
 ```text
-RFID 读取 -> EPC 队列 -> processDetectedTag -> TimingLogic
-LoRa 命令 -> handleLoraCommand -> AthleteManager/StorageManager/RFIDReader
-AthleteManager -> StorageManager -> TF 卡 athletes.csv
+RFID 读取 -> EPC 队列 -> DetectionController -> LoRa 上报
+LoRa 字节命令 -> handleLoraCommand -> DetectionController/RFIDReader
+DetectionController 临时表和成绩表 -> 0x11/0x12/0x13/0x14 返回
 ```
 
 ### 2. 简单优先
@@ -135,72 +136,40 @@ STM32 Arduino Core 不支持 ESP32 风格的 `HardwareSerial::onReceive()`，不
 
 ### 2. RFID 业务处理边界
 
-`processDetectedTag()` 包含串口输出、运动员查找、计时逻辑、LoRa 发送等较重操作，不应放入串口接收回调或中断上下文。
+DetectOnly 的业务判断由 `DetectionController` 负责，包括临时运动员匹配、单次比赛成绩、黑名单匹配、普通 EPC 记录、圈数、单圈时长和总时长更新。`RFIDReader` 只负责 RFID 串口指令、响应解析和 EPC 队列，不应加入业务状态。
 
 推荐保持以下结构：
 
 ```text
 receiveTag() -> processFrame() -> EPC 队列
-loop() -> readTagEvent() -> processDetectedTag()
+loop() -> readTagEvent() -> DetectionController 业务判断 -> LoRa 字节返回
 ```
 
 ### 3. LoRa 通信
 
 LoRa 当前使用串口透传方式，不使用 SX127x SPI LoRa 库。
 
-LoRa 协议变动必须同步维护：
+DetectOnly 当前只使用字节协议。协议变动必须同步维护：
 
 ```text
-LORAProtocol.txt
+LORAProtocol-byte.md
 ```
 
-当前发送包仍允许保留字段名。后续待办是使用字节规范协议压缩包长度。
+`LORAProtocol.txt` 仅作为入口说明，指向 `LORAProtocol-byte.md`，不要在其中恢复旧文本协议。
 
 此前提出的 `\x1E` 批量合并发送缓存方案已取消，不应在未重新确认前实现。
 
-### 4. StorageManager 存储格式
+### 4. DetectOnly 临时数据边界
 
-当前运动员数据保存在 TF 卡：
+当前 DetectOnly 分支不使用 TF 卡、数据库、EEPROM 或动态运动员存储。所有运动员、运动员成绩、黑名单和普通 EPC 记录均为运行期固定数组临时数据。
 
-```text
-athletes.csv
-```
-
-`athletes.csv` 当前保存格式：
-
-```text
-<ID>;<NAME_HEX>;<EPC>
-```
-
-其中 `NAME_HEX` 是姓名 UTF-8 原始字节转成的十六进制文本。
-
-不要恢复 JSON、LittleFS 或 EEPROM 旧方案。
-
-当前 `STM32SD` 环境不支持 `SD.rename()`，保存流程应保持为备份旧主文件、直接写主文件、失败时从备份恢复。
+`0x02` 结束检测成功后，应清空临时运动员、运动员成绩、黑名单、普通 EPC 8 秒记录和运动员成绩时钟。除非用户重新提出完整计时或保存需求，不要添加持久化保存路径。
 
 ### 5. 运动员 ID
 
-新增运动员时，外部不再输入 ID。系统自动生成三位补零 ID：
+DetectOnly 中运动员由 APP 通过 `0x10` 定义，协议载荷包含运动员标志、EPC 和运动员 ID。STM32 不生成运动员姓名，不保存运动员资料，也不维护旧主线的 `ADD/BIND/REMOVE` 文本命令。
 
-```text
-001
-002
-003
-```
-
-串口新增格式：
-
-```text
-ADD,name,epc
-```
-
-LoRa 新增格式：
-
-```text
-COMMAND_ADD;<运动员姓名>;<EPC>
-```
-
-`BIND` 和 `REMOVE` 仍需要指定运动员 ID。
+运动员被定义成功后，STM32 先返回 `0xF0` 成功，再立即返回一条 `0x12` 运动员信息。第一名运动员会启动运动员成绩时钟，其圈数、单圈时长和总时长为 0，后续运动员按该成绩时钟初始化。
 
 
 
@@ -220,9 +189,11 @@ COMMAND_ADD;<运动员姓名>;<EPC>
 
 ## 五. 其他文档
 
-### LORA协议文档：LORAProtocol.txt
+### LORA协议文档：LORAProtocol-byte.md
 
 该文档用于记录通过 LoRa 进行通信时使用的协议。协议字段、命令格式、返回格式发生变动时必须更新。
+
+`LORAProtocol.txt` 仅保留 DetectOnly 协议入口说明，不作为旧文本协议维护入口。
 
 ### RFID功能记录文档：RFIDPollingNotes.md
 

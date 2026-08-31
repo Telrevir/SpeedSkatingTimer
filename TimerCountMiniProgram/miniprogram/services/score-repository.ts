@@ -3,6 +3,9 @@ export interface LapScoreRecord {
   name: string
   epc: string
   lap: number
+  rawLap?: number
+  correctionOffset?: number
+  correctedLap?: number
   lapCentiseconds: number
   totalCentiseconds: number
   rank: number

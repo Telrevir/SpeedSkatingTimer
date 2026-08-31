@@ -2,6 +2,8 @@
 
 本文档记录当前待开发功能的具体实现计划。任务状态仍以 `CurrentTask.md` 为准。
 
+> 注意：当前分支为 `DetectOnly`。本文档以下内容来自完整计时主线的历史开发计划，不作为 DetectOnly 当前待办直接执行。DetectOnly 当前状态以 `CurrentTask.md`、`ARCHITECTURE.md`、`DETECT_ONLY_IMPLEMENTATION_PLAN.md` 和 `LORAProtocol-byte.md` 为准。
+
 
 
 ## 比赛成绩 CSV 保存功能

@@ -4,8 +4,20 @@ import test from 'node:test'
 import {
   ConnectionState,
   FirmwareDetectionState,
+  getConnectionPresentation,
   getRaceControlsState,
 } from '../miniprogram/domain/race-state'
+
+test('shows the connect button only while disconnected and uses current connection text', () => {
+  assert.deepEqual(getConnectionPresentation(ConnectionState.Disconnected), {
+    connectionText: '未连接 ESP32-LORA-BRIDGE',
+    showConnectButton: true,
+  })
+  assert.deepEqual(getConnectionPresentation(ConnectionState.Connected), {
+    connectionText: '已连接 ESP32-LORA-BRIDGE',
+    showConnectButton: false,
+  })
+})
 
 test('disables both race controls while disconnected', () => {
   assert.deepEqual(

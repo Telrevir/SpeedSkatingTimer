@@ -3,7 +3,8 @@
     "pages/race/index",
     "pages/ranking/index",
     "pages/athletes/index",
-    "pages/scores/index"
+    "pages/scores/index",
+    "pages/logs/index"
   ],
   "window": {
     "navigationBarTitleText": "轮滑计时",
@@ -20,7 +21,8 @@
       { "pagePath": "pages/race/index", "text": "比赛" },
       { "pagePath": "pages/ranking/index", "text": "排名" },
       { "pagePath": "pages/athletes/index", "text": "运动员" },
-      { "pagePath": "pages/scores/index", "text": "成绩" }
+      { "pagePath": "pages/scores/index", "text": "成绩" },
+      { "pagePath": "pages/logs/index", "text": "日志" }
     ]
   },
   "sitemapLocation": "sitemap.json"

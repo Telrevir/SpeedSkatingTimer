@@ -15,6 +15,7 @@ export interface AthleteClassification {
 export interface FirmwareAthleteScore {
   athleteId: number
   lapCount: number
+  lapCentiseconds: number
   totalCentiseconds: number
 }
 
@@ -37,13 +38,14 @@ export function encodeAthleteDefinition(definition: AthleteClassification): Uint
 }
 
 export function decodeFirmwareAthleteScore(payload: Uint8Array): FirmwareAthleteScore | null {
-  if (payload.length !== 6) return null
+  if (payload.length !== 9) return null
   const athleteId = readUint16BE(payload, 0)
   if (athleteId === 0) return null
   return {
     athleteId,
     lapCount: payload[2]!,
-    totalCentiseconds: readUint24BE(payload, 3),
+    lapCentiseconds: readUint24BE(payload, 3),
+    totalCentiseconds: readUint24BE(payload, 6),
   }
 }
 

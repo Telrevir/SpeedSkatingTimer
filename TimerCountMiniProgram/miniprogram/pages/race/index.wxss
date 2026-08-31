@@ -122,6 +122,7 @@
 .rank-name { font-weight: 600; }
 .finished-badge { margin-left: 10rpx; padding: 3rpx 9rpx; border-radius: 999rpx; background: #ecfdf3; color: #067647; font-size: 18rpx; }
 .rank-lap, .rank-time { color: #667085; font-size: 24rpx; text-align: right; }
+.lap-correction { color: #f97316; font-weight: 700; }
 
 .empty-ranking {
   padding: 56rpx 0 28rpx;

@@ -1,5 +1,6 @@
 import { formatCentiseconds } from '../../domain/time-format'
 import { formatRelativeTotalTime } from '../../domain/relative-total-time'
+import type { Athlete } from '../../domain/athlete'
 import { raceController } from '../../services/app-services'
 
 let unsubscribe: (() => void) | null = null
@@ -11,7 +12,8 @@ Page({
       id: number
       rank: number
       name: string
-      lap: string
+      rawLap: string
+      correctionOffset: number
       lapTime: string
       totalTime: string
       change: string
@@ -25,16 +27,7 @@ Page({
       const rows = athletes
         .filter(({ currentRank, hasRaceScore }) => currentRank > 0 && hasRaceScore)
         .sort((left, right) => left.currentRank - right.currentRank)
-        .map((athlete) => ({
-          id: athlete.id,
-          rank: athlete.currentRank,
-          name: athlete.name,
-          lap: athlete.lapCount < 0 ? '—' : String(athlete.lapCount),
-          lapTime: formatCentiseconds(athlete.lapCentiseconds),
-          totalTime: formatRelativeTotalTime(athlete, leader),
-          change: rankChange(athlete.previousRank, athlete.currentRank),
-          finished: athlete.finished,
-        }))
+        .map((athlete) => toRow(athlete, leader))
       this.setData({ rows })
     })
     unsubscribeRace = raceController.subscribe(() => {
@@ -44,16 +37,7 @@ Page({
         rows: athletes
           .filter(({ currentRank, hasRaceScore }) => currentRank > 0 && hasRaceScore)
           .sort((left, right) => left.currentRank - right.currentRank)
-          .map((athlete) => ({
-            id: athlete.id,
-            rank: athlete.currentRank,
-            name: athlete.name,
-            lap: athlete.lapCount < 0 ? '—' : String(athlete.lapCount),
-            lapTime: formatCentiseconds(athlete.lapCentiseconds),
-            totalTime: formatRelativeTotalTime(athlete, leader),
-            change: rankChange(athlete.previousRank, athlete.currentRank),
-            finished: athlete.finished,
-          })),
+          .map((athlete) => toRow(athlete, leader)),
       })
     })
   },
@@ -70,4 +54,21 @@ function rankChange(previousRank: number, currentRank: number): string {
   if (previousRank <= 0 || previousRank === currentRank) return '--'
   const difference = previousRank - currentRank
   return difference > 0 ? `↑${difference}` : `↓${Math.abs(difference)}`
+}
+
+function toRow(athlete: Athlete, leader: Athlete | undefined) {
+  const rawLap = athlete.rawLapCount ?? athlete.lapCount
+  const correctedLap = athlete.correctedLapCount ?? athlete.lapCount
+  const displayedRawLap = Math.min(rawLap, correctedLap)
+  return {
+    id: athlete.id,
+    rank: athlete.currentRank,
+    name: athlete.name,
+    rawLap: displayedRawLap < 0 ? '—' : String(displayedRawLap),
+    correctionOffset: Math.max(0, correctedLap - displayedRawLap),
+    lapTime: formatCentiseconds(athlete.lapCentiseconds),
+    totalTime: formatRelativeTotalTime(athlete, leader),
+    change: rankChange(athlete.previousRank, athlete.currentRank),
+    finished: athlete.finished,
+  }
 }

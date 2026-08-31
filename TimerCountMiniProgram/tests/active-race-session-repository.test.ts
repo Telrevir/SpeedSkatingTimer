@@ -21,13 +21,20 @@ const session: ActiveRaceSession = {
   nonAthleteDefinitionCount: 0,
 }
 
+const savedSession: ActiveRaceSession = {
+  ...session,
+  lapCorrectionStates: [],
+  localPhase: 'running',
+  finishLap: null,
+}
+
 test('saves, clones and clears an active race session', () => {
   const storage = new MemoryStorage()
   const repository = new ActiveRaceSessionRepository(storage)
 
   repository.save(session)
   const loaded = repository.load()!
-  assert.deepEqual(loaded, session)
+  assert.deepEqual(loaded, savedSession)
   loaded.participantIds.push(3)
   assert.deepEqual(repository.load()?.participantIds, [1, 2])
 
@@ -40,11 +47,11 @@ test('increments only the selected successful definition count', () => {
   repository.save(session)
 
   assert.deepEqual(repository.incrementDefinition(true), {
-    ...session,
+    ...savedSession,
     athleteDefinitionCount: 1,
   })
   assert.deepEqual(repository.incrementDefinition(false), {
-    ...session,
+    ...savedSession,
     athleteDefinitionCount: 1,
     nonAthleteDefinitionCount: 1,
   })

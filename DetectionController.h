@@ -27,6 +27,7 @@ enum class EpcEventType : uint8_t {
 struct AthleteInfo {
   uint16_t id;
   uint8_t lapCount;
+  uint32_t lapCentiseconds;
   uint32_t totalCentiseconds;
 };
 
@@ -45,10 +46,16 @@ private:
     bool enabled;
     uint16_t id;
     uint32_t epc;
-    uint8_t lapCount;
-    uint32_t totalCentiseconds;
     uint32_t lastDetectedMs;
     bool hasDetectionTime;
+  };
+
+  struct AthleteScoreEntry {
+    bool enabled;
+    uint16_t id;
+    uint8_t lapCount;
+    uint32_t lapCentiseconds;
+    uint32_t totalCentiseconds;
   };
 
   struct BlacklistEntry {
@@ -63,25 +70,22 @@ private:
   };
 
   bool running_;
-  uint32_t raceStartMs_;
-  uint32_t athleteOffsetMs_;
-  bool athleteOffsetSet_;
+  uint32_t athleteClockStartMs_;
+  bool athleteClockStarted_;
   AthleteEntry athletes_[LIST_CAPACITY];
+  AthleteScoreEntry athleteScores_[LIST_CAPACITY];
   BlacklistEntry blacklist_[LIST_CAPACITY];
   RecentEpcEntry recentEpcs_[LIST_CAPACITY];
 
   void clearAll() {
     for (size_t i = 0; i < LIST_CAPACITY; ++i) {
       athletes_[i] = {};
+      athleteScores_[i] = {};
       blacklist_[i] = {};
       recentEpcs_[i] = {};
     }
-    athleteOffsetMs_ = 0;
-    athleteOffsetSet_ = false;
-  }
-
-  uint32_t raceElapsedMs(uint32_t nowMs) const {
-    return nowMs - raceStartMs_;
+    athleteClockStartMs_ = 0;
+    athleteClockStarted_ = false;
   }
 
   uint32_t toCentiseconds(uint32_t milliseconds) const {
@@ -91,12 +95,22 @@ private:
   }
 
   uint32_t athleteTotal(uint32_t nowMs) const {
-    if (!athleteOffsetSet_) return 0;
-    return toCentiseconds(raceElapsedMs(nowMs) - athleteOffsetMs_);
+    if (!athleteClockStarted_) return 0;
+    return toCentiseconds(nowMs - athleteClockStartMs_);
   }
 
-  AthleteInfo snapshot(const AthleteEntry& entry) const {
-    return {entry.id, entry.lapCount, entry.totalCentiseconds};
+  AthleteScoreEntry* findScore(uint16_t id) {
+    for (size_t i = 0; i < LIST_CAPACITY; ++i) {
+      if (athleteScores_[i].enabled && athleteScores_[i].id == id) {
+        return &athleteScores_[i];
+      }
+    }
+    return nullptr;
+  }
+
+  AthleteInfo snapshot(const AthleteScoreEntry& entry) const {
+    return {entry.id, entry.lapCount, entry.lapCentiseconds,
+            entry.totalCentiseconds};
   }
 
   void removeRecentEpc(uint32_t epc) {
@@ -110,17 +124,18 @@ private:
 
 public:
   DetectionController()
-    : running_(false), raceStartMs_(0), athleteOffsetMs_(0),
-      athleteOffsetSet_(false) {
+    : running_(false), athleteClockStartMs_(0),
+      athleteClockStarted_(false) {
     clearAll();
   }
 
   bool isRunning() const { return running_; }
+  bool isAthleteClockRunning() const { return athleteClockStarted_; }
 
   DetectResult start(uint32_t nowMs) {
     if (running_) return DetectResult::StateNotAllowed;
+    (void)nowMs;
     clearAll();
-    raceStartMs_ = nowMs;
     running_ = true;
     return DetectResult::Accepted;
   }
@@ -128,7 +143,6 @@ public:
   DetectResult stop() {
     if (!running_) return DetectResult::StateNotAllowed;
     running_ = false;
-    raceStartMs_ = 0;
     clearAll();
     return DetectResult::Accepted;
   }
@@ -138,25 +152,35 @@ public:
     if (!running_) return DefineResult::StateNotAllowed;
 
     if (isAthlete) {
+      size_t athleteSlot = LIST_CAPACITY;
+      size_t scoreSlot = LIST_CAPACITY;
       for (size_t i = 0; i < LIST_CAPACITY; ++i) {
-        if (athletes_[i].enabled) continue;
-
-        uint32_t total = 0;
-        if (!athleteOffsetSet_) {
-          // 第一名运动员定义时建立统一偏移量，并强制从0开始。
-          athleteOffsetMs_ = raceElapsedMs(nowMs);
-          athleteOffsetSet_ = true;
-        } else {
-          total = athleteTotal(nowMs);
+        if (!athletes_[i].enabled && athleteSlot == LIST_CAPACITY) {
+          athleteSlot = i;
         }
-
-        // 定义时刻即启动8秒去重，避免标签停留时立即被计为第1圈。
-        athletes_[i] = {true, id, epc, 0, total, nowMs, true};
-        removeRecentEpc(epc);
-        info = snapshot(athletes_[i]);
-        return DefineResult::AthleteDefined;
+        if (!athleteScores_[i].enabled && scoreSlot == LIST_CAPACITY) {
+          scoreSlot = i;
+        }
       }
-      return DefineResult::TableFull;
+      if (athleteSlot == LIST_CAPACITY || scoreSlot == LIST_CAPACITY) {
+        return DefineResult::TableFull;
+      }
+
+      uint32_t total = 0;
+      if (!athleteClockStarted_) {
+        // 首个运动员被确认时才启动成绩时钟，并强制从0开始。
+        athleteClockStartMs_ = nowMs;
+        athleteClockStarted_ = true;
+      } else {
+        total = athleteTotal(nowMs);
+      }
+
+      // 定义表只负责EPC匹配和去重，成绩表独立保存比赛成绩。
+      athletes_[athleteSlot] = {true, id, epc, nowMs, true};
+      athleteScores_[scoreSlot] = {true, id, 0, 0, total};
+      removeRecentEpc(epc);
+      info = snapshot(athleteScores_[scoreSlot]);
+      return DefineResult::AthleteDefined;
     }
 
     for (size_t i = 0; i < LIST_CAPACITY; ++i) {
@@ -189,9 +213,15 @@ public:
 
       athlete.lastDetectedMs = nowMs;
       athlete.hasDetectionTime = true;
-      ++athlete.lapCount;
-      athlete.totalCentiseconds = athleteTotal(nowMs);
-      return {EpcEventType::Athlete, snapshot(athlete)};
+      AthleteScoreEntry* score = findScore(athlete.id);
+      if (score == nullptr) return {EpcEventType::TableFull, {}};
+      uint32_t total = athleteTotal(nowMs);
+      score->lapCentiseconds = total >= score->totalCentiseconds
+        ? total - score->totalCentiseconds
+        : 0;
+      score->totalCentiseconds = total;
+      ++score->lapCount;
+      return {EpcEventType::Athlete, snapshot(*score)};
     }
 
     size_t reusable = LIST_CAPACITY;
@@ -228,8 +258,8 @@ public:
   size_t athleteSlotCount() const { return LIST_CAPACITY; }
 
   bool athleteAt(size_t slot, AthleteInfo& info) const {
-    if (slot >= LIST_CAPACITY || !athletes_[slot].enabled) return false;
-    info = snapshot(athletes_[slot]);
+    if (slot >= LIST_CAPACITY || !athleteScores_[slot].enabled) return false;
+    info = snapshot(athleteScores_[slot]);
     return true;
   }
 };

@@ -36,6 +36,10 @@ export function encodePacket(
 export class LoraPacketDecoder {
   private buffer = new Uint8Array()
 
+  reset(): void {
+    this.buffer = new Uint8Array()
+  }
+
   push(chunk: Uint8Array): LoraPacket[] {
     const combined = new Uint8Array(this.buffer.length + chunk.length)
     combined.set(this.buffer)

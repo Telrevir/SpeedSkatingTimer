@@ -44,19 +44,20 @@ int main() {
   assert(output[0] == 0xAA && output[1] == 0x10 && output[2] == 0x07);
   assert(output[10] == 0xA9 && output[11] == 0xF9);
 
-  uint8_t athletePayload[6] = {};
+  uint8_t athletePayload[9] = {};
   DetectProtocol::writeUInt16BE(athletePayload, 1);
-  athletePayload[2] = 0;
-  DetectProtocol::writeUInt24BE(athletePayload + 3, 0);
-  uint8_t builtAthletePayload[6] = {};
-  DetectProtocol::buildAthletePayload(1, 0, 0, builtAthletePayload);
-  for (uint8_t i = 0; i < 6; ++i) {
+  athletePayload[2] = 2;
+  DetectProtocol::writeUInt24BE(athletePayload + 3, 800);
+  DetectProtocol::writeUInt24BE(athletePayload + 6, 1600);
+  uint8_t builtAthletePayload[9] = {};
+  DetectProtocol::buildAthletePayload(1, 2, 800, 1600, builtAthletePayload);
+  for (uint8_t i = 0; i < 9; ++i) {
     assert(builtAthletePayload[i] == athletePayload[i]);
   }
   assert(DetectProtocol::encodePacket(DetectProtocol::CMD_ATHLETE,
                                       athletePayload, sizeof(athletePayload),
-                                      output, sizeof(output)) == 11);
-  assert(output[1] == 0x12 && output[9] == 0x19 && output[10] == 0xF9);
+                                      output, sizeof(output)) == 14);
+  assert(output[1] == 0x12 && output[12] == 0x87 && output[13] == 0xF9);
 
   uint8_t epcPayload[4] = {};
   DetectProtocol::buildEpcPayload(0x3333F337UL, epcPayload);

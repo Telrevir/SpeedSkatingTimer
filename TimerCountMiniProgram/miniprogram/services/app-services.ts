@@ -10,6 +10,7 @@ import { AthleteCatalogService } from './athlete-catalog-service'
 import { WechatAthleteCatalogStorage } from '../platform/wechat-athlete-catalog-storage'
 import { WechatActiveRaceSessionStorage } from '../platform/wechat-active-race-session-storage'
 import { ActiveRaceSessionRepository } from './active-race-session-repository'
+import { ProtocolLogStore } from '../stores/protocol-log-store'
 
 const bluetoothApi = new WechatBluetoothApiAdapter()
 const bleTransport = new BleTransport(bluetoothApi)
@@ -22,6 +23,7 @@ export const athleteCatalog = new AthleteCatalogService(
 export const activeRaceSessionRepository = new ActiveRaceSessionRepository(
   new WechatActiveRaceSessionStorage(),
 )
+export const protocolLog = new ProtocolLogStore()
 
 export const raceController = new RaceController(
   bleTransport,
@@ -29,4 +31,5 @@ export const raceController = new RaceController(
   scoreRepository,
   groupStore,
   activeRaceSessionRepository,
+  protocolLog,
 )

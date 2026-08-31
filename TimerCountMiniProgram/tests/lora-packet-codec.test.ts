@@ -34,6 +34,19 @@ test('keeps an incomplete packet until the remaining bytes arrive', () => {
   ])
 })
 
+test('reset discards an incomplete packet from the previous BLE connection', () => {
+  const decoder = new LoraPacketDecoder()
+  const packet = encodePacket(0x08, Uint8Array.of(0x02))
+
+  assert.deepEqual(decoder.push(packet.slice(0, 3)), [])
+  decoder.reset()
+
+  assert.deepEqual(decoder.push(packet.slice(3)), [])
+  assert.deepEqual(decoder.push(packet), [
+    { commandId: 0x08, payload: Uint8Array.of(0x02) },
+  ])
+})
+
 test('decodes every complete packet from one notification', () => {
   const decoder = new LoraPacketDecoder()
   const first = encodePacket(0x08, Uint8Array.of(0x02))

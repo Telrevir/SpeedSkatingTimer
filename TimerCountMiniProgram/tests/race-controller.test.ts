@@ -2,7 +2,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import type { AthleteCatalog, AthleteCatalogStorage } from '../miniprogram/domain/athlete-profile'
-import { ConnectionState, FirmwareDetectionState } from '../miniprogram/domain/race-state'
+import {
+  AutoConnectState,
+  ConnectionState,
+  FirmwareDetectionState,
+  TargetDeviceNotFoundError,
+} from '../miniprogram/domain/race-state'
 import { CommandId } from '../miniprogram/protocol/commands'
 import { encodePacket } from '../miniprogram/protocol/lora-packet-codec'
 import {
@@ -18,6 +23,8 @@ import { ProtocolLogStore } from '../miniprogram/stores/protocol-log-store'
 
 class MemoryRaceTransport implements RaceTransport {
   readonly sent: Uint8Array[] = []
+  connectCalls = 0
+  connectError: Error | null = null
   failNextCommandId: CommandId | null = null
   private delayedFailure: {
     commandId: CommandId
@@ -26,8 +33,18 @@ class MemoryRaceTransport implements RaceTransport {
   } | null = null
   private dataListener: ((value: Uint8Array) => void) | null = null
   private readonly disconnectListeners = new Set<() => void>()
+  private delayedConnect: { started: () => void; completion: Promise<void> } | null = null
 
-  async connect(): Promise<void> {}
+  async connect(): Promise<void> {
+    this.connectCalls += 1
+    const delayedConnect = this.delayedConnect
+    if (delayedConnect) {
+      this.delayedConnect = null
+      delayedConnect.started()
+      await delayedConnect.completion
+    }
+    if (this.connectError) throw this.connectError
+  }
   async send(packet: Uint8Array): Promise<void> {
     const delayedFailure = this.delayedFailure
     if (delayedFailure && delayedFailure.commandId === packet[1]) {
@@ -53,6 +70,14 @@ class MemoryRaceTransport implements RaceTransport {
   }
   emit(value: Uint8Array): void { this.dataListener?.(value) }
   disconnect(): void { this.disconnectListeners.forEach((listener) => listener()) }
+  delayNextConnect(): { started: Promise<void>; release: () => void } {
+    let markStarted!: () => void
+    let release!: () => void
+    const started = new Promise<void>((resolve) => { markStarted = resolve })
+    const completion = new Promise<void>((resolve) => { release = resolve })
+    this.delayedConnect = { started: markStarted, completion }
+    return { started, release }
+  }
   delayFailureForNext(commandId: CommandId): { started: Promise<void>; release: () => void } {
     let markStarted!: () => void
     let release!: () => void
@@ -204,6 +229,69 @@ test('keeps a successful BLE connection marked connected when protocol synchroni
   assert.equal(controller.snapshot.syncError, 'send failed')
 })
 
+test('automatic connection reports not found without rejecting or sending protocol commands', async () => {
+  const { controller, transport } = await fixture()
+  transport.connectError = new TargetDeviceNotFoundError('ESP32-LORA-BRIDGE')
+
+  await controller.autoConnect()
+
+  assert.equal(controller.snapshot.connectionState, ConnectionState.Disconnected)
+  assert.equal(controller.snapshot.autoConnectState, AutoConnectState.NotFound)
+  assert.equal(transport.connectCalls, 1)
+  assert.equal(transport.sent.length, 0)
+})
+
+test('automatic connection finds the device and completes the normal foreground sync', async () => {
+  const { controller, transport } = await fixture()
+
+  const connecting = controller.autoConnect()
+  assert.equal(controller.snapshot.autoConnectState, AutoConnectState.Searching)
+  await waitForSentCommand(transport, CommandId.GetRaceState)
+  transport.emit(encodePacket(CommandId.RaceState, Uint8Array.of(FirmwareDetectionState.Stopped)))
+  await connecting
+
+  assert.equal(controller.snapshot.connectionState, ConnectionState.Connected)
+  assert.equal(controller.snapshot.autoConnectState, AutoConnectState.Connected)
+})
+
+test('automatic and manual requests share one in-flight connection attempt', async () => {
+  const { controller, transport } = await fixture()
+  const gate = transport.delayNextConnect()
+
+  const first = controller.autoConnect()
+  const second = controller.autoConnect()
+  const manual = controller.connect()
+  await gate.started
+  assert.equal(transport.connectCalls, 1)
+
+  gate.release()
+  await waitForSentCommand(transport, CommandId.GetRaceState)
+  transport.emit(encodePacket(CommandId.RaceState, Uint8Array.of(FirmwareDetectionState.Stopped)))
+  await Promise.all([first, second, manual])
+  assert.equal(transport.connectCalls, 1)
+})
+
+test('disconnect starts a fresh automatic connection attempt', async () => {
+  const { controller, transport } = await fixture()
+  const firstConnection = controller.connect()
+  await waitForSentCommand(transport, CommandId.GetRaceState)
+  transport.emit(encodePacket(CommandId.RaceState, Uint8Array.of(FirmwareDetectionState.Stopped)))
+  await firstConnection
+
+  transport.disconnect()
+
+  await waitForCondition(() => transport.connectCalls === 2, 'automatic reconnect did not start')
+  await waitForCondition(
+    () => transport.sent.filter((packet) => packet[1] === CommandId.GetRaceState).length === 2,
+    'automatic reconnect did not synchronize firmware state',
+  )
+  transport.emit(encodePacket(CommandId.RaceState, Uint8Array.of(FirmwareDetectionState.Stopped)))
+  await waitForCondition(
+    () => controller.snapshot.autoConnectState === AutoConnectState.Connected,
+    'automatic reconnect did not finish',
+  )
+})
+
 test('returns the controller to disconnected and unknown firmware state when BLE drops', async () => {
   const { controller, transport } = await fixture()
   const connecting = controller.connect()
@@ -211,6 +299,7 @@ test('returns the controller to disconnected and unknown firmware state when BLE
   transport.emit(encodePacket(CommandId.RaceState, Uint8Array.of(FirmwareDetectionState.Stopped)))
   await connecting
 
+  transport.connectError = new TargetDeviceNotFoundError('ESP32-LORA-BRIDGE')
   transport.disconnect()
 
   assert.equal(controller.snapshot.connectionState, ConnectionState.Disconnected)
@@ -224,6 +313,7 @@ test('preserves the active race session and local scoring state when BLE drops',
   const athletesBeforeDisconnect = controller.athletesSnapshot
   const sessionBeforeDisconnect = activeSessionRepository.load()
 
+  transport.connectError = new TargetDeviceNotFoundError('ESP32-LORA-BRIDGE')
   transport.disconnect()
 
   assert.equal(controller.snapshot.localPhase, 'running')

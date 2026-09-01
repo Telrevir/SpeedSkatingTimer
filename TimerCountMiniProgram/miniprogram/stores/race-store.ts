@@ -1,9 +1,10 @@
 import type { LocalRacePhase } from '../domain/local-race-scoring'
 import type { AthleteTransferState } from '../protocol/athlete-sync-codec'
-import { ConnectionState, FirmwareDetectionState } from '../domain/race-state'
+import { AutoConnectState, ConnectionState, FirmwareDetectionState } from '../domain/race-state'
 
 export interface RaceSnapshot {
   connectionState: ConnectionState
+  autoConnectState: AutoConnectState
   firmwareState: FirmwareDetectionState
   localPhase: LocalRacePhase
   finishLap: number | null
@@ -18,6 +19,7 @@ export class RaceStore {
   private readonly listeners = new Set<(snapshot: RaceSnapshot) => void>()
   private value: RaceSnapshot = {
     connectionState: ConnectionState.Disconnected,
+    autoConnectState: AutoConnectState.Idle,
     firmwareState: FirmwareDetectionState.Unknown,
     localPhase: 'idle',
     finishLap: null,
@@ -32,6 +34,11 @@ export class RaceStore {
 
   setConnectionState(connectionState: ConnectionState): void {
     this.value = { ...this.value, connectionState }
+    this.notify()
+  }
+
+  setAutoConnectState(autoConnectState: AutoConnectState): void {
+    this.value = { ...this.value, autoConnectState }
     this.notify()
   }
 
@@ -52,7 +59,7 @@ export class RaceStore {
 
   setRaceState(state: Omit<
     RaceSnapshot,
-    'connectionState' | 'firmwareState' | 'athleteTransferState' | 'syncError'
+    'connectionState' | 'autoConnectState' | 'firmwareState' | 'athleteTransferState' | 'syncError'
   >): void {
     this.value = { ...this.value, ...state }
     this.notify()

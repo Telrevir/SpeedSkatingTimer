@@ -18,6 +18,8 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 Page({
   data: {
     connecting: false,
+    autoConnecting: false,
+    connectButtonText: '连接',
     connectionText: '未连接 ESP32-LORA-BRIDGE',
     showConnectButton: true,
     raceStateText: '未连接设备',
@@ -86,6 +88,10 @@ Page({
     pollTimer = null
   },
 
+  onShow() {
+    void raceController.autoConnect()
+  },
+
   async connectDevice() {
     if (this.data.connecting) return
     this.setData({ connecting: true, connectionText: '正在连接 ESP32-LORA-BRIDGE' })
@@ -142,7 +148,10 @@ Page({
       snapshot.firmwareState,
       snapshot.localPhase,
     )
-    const connection = getConnectionPresentation(snapshot.connectionState)
+    const connection = getConnectionPresentation(
+      snapshot.connectionState,
+      snapshot.autoConnectState,
+    )
     const presentation = raceStatePresentation(snapshot)
     const leader = raceController.athletesSnapshot.find(({ id }) => id === snapshot.leaderAthleteId)
     const leaderLap = leader ? lapPresentation(leader) : null

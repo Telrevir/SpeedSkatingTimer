@@ -4,8 +4,8 @@
       <text class="eyebrow">BLE 计时设备</text>
       <text class="connection-text">{{connectionText}}</text>
     </view>
-    <button wx:if="{{showConnectButton}}" class="connect-button" size="mini" loading="{{connecting}}" bindtap="connectDevice">
-      {{connecting ? '连接中' : '连接'}}
+    <button wx:if="{{showConnectButton}}" class="connect-button" size="mini" loading="{{connecting || autoConnecting}}" disabled="{{connecting || autoConnecting}}" bindtap="connectDevice">
+      {{connecting ? '连接中' : connectButtonText}}
     </button>
   </view>
 

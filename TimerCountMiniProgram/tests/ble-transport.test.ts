@@ -10,6 +10,7 @@ import {
   WechatBluetoothApi,
 } from '../miniprogram/transport/wechat-bluetooth-api'
 import { BleTransport } from '../miniprogram/transport/ble-transport'
+import { TargetDeviceNotFoundError } from '../miniprogram/domain/race-state'
 
 class RecordingBluetoothApi implements WechatBluetoothApi {
   readonly calls: string[] = []
@@ -17,6 +18,7 @@ class RecordingBluetoothApi implements WechatBluetoothApi {
   readonly writeTargets: string[] = []
   disconnectOnNextWrite = false
   disconnectWhileGettingServices = false
+  deviceNotFound = false
   private delayedWrite: {
     started: () => void
     completion: Promise<void>
@@ -28,6 +30,7 @@ class RecordingBluetoothApi implements WechatBluetoothApi {
   async startDiscovery(): Promise<void> { this.calls.push('startDiscovery') }
   async waitForDevice(name: string): Promise<BleDevice> {
     this.calls.push(`waitForDevice:${name}`)
+    if (this.deviceNotFound) throw new TargetDeviceNotFoundError(name)
     return { deviceId: 'device-1', name }
   }
   async stopDiscovery(): Promise<void> { this.calls.push('stopDiscovery') }
@@ -150,6 +153,18 @@ test('forwards notification bytes to registered data listeners', async () => {
   api.emitValue(Uint8Array.of(0xaa, 0x08))
 
   assert.deepEqual(received, [[0xaa, 0x08]])
+})
+
+test('stops discovery and returns to disconnected when the target device is not found', async () => {
+  const api = new RecordingBluetoothApi()
+  api.deviceNotFound = true
+  const transport = new BleTransport(api)
+
+  await assert.rejects(() => transport.connect(), TargetDeviceNotFoundError)
+
+  assert.equal(transport.state, 'disconnected')
+  assert.equal(api.calls.filter((call) => call === 'stopDiscovery').length, 1)
+  assert.equal(api.calls.some((call) => call.startsWith('createConnection:')), false)
 })
 
 test('returns to disconnected state and invalidates GATT writes when the active device disconnects', async () => {

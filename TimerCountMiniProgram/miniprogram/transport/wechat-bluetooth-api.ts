@@ -1,3 +1,5 @@
+import { TargetDeviceNotFoundError } from '../domain/race-state'
+
 export interface BleDevice {
   deviceId: string
   name: string
@@ -61,7 +63,7 @@ export class WechatBluetoothApiAdapter implements WechatBluetoothApi {
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         wx.offBluetoothDeviceFound()
-        reject(new Error(`未找到蓝牙设备 ${name}`))
+        reject(new TargetDeviceNotFoundError(name))
       }, 10_000)
       const listener: WechatMiniprogram.OnBluetoothDeviceFoundCallback = (result) => {
         const match = result.devices.find((device) =>

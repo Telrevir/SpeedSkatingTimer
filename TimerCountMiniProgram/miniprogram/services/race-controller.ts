@@ -1,6 +1,11 @@
 import type { Athlete } from '../domain/athlete'
 import { LocalRaceScoring } from '../domain/local-race-scoring'
-import { ConnectionState, FirmwareDetectionState } from '../domain/race-state'
+import {
+  AutoConnectState,
+  ConnectionState,
+  FirmwareDetectionState,
+  TargetDeviceNotFoundError,
+} from '../domain/race-state'
 import {
   decodeAthleteTransferState,
   decodeFirmwareAthleteScore,
@@ -39,6 +44,7 @@ export class RaceController {
   private raceHistoryFinished = false
   private foregroundSync: Promise<void> | null = null
   private raceStateRequest: Promise<FirmwareDetectionState> | null = null
+  private connectionAttempt: Promise<void> | null = null
   private pendingRaceState: {
     resolve: (state: FirmwareDetectionState) => void
     reject: (error: Error) => void
@@ -111,9 +117,29 @@ export class RaceController {
   }
 
   async connect(): Promise<void> {
-    await this.transport.connect()
-    this.raceStore.setConnectionState(ConnectionState.Connected)
-    await this.syncForegroundState()
+    await this.getOrStartConnectionAttempt()
+  }
+
+  async autoConnect(): Promise<void> {
+    if (this.isConnected()) {
+      await this.syncForegroundState().catch(() => undefined)
+      return
+    }
+    const startedThisAttempt = this.connectionAttempt === null
+    if (startedThisAttempt) this.raceStore.setAutoConnectState(AutoConnectState.Searching)
+    try {
+      await this.getOrStartConnectionAttempt()
+      if (startedThisAttempt) this.raceStore.setAutoConnectState(AutoConnectState.Connected)
+    } catch (error) {
+      if (!startedThisAttempt) return
+      if (this.isConnected()) {
+        this.raceStore.setAutoConnectState(AutoConnectState.Connected)
+      } else if (error instanceof TargetDeviceNotFoundError) {
+        this.raceStore.setAutoConnectState(AutoConnectState.NotFound)
+      } else {
+        this.raceStore.setAutoConnectState(AutoConnectState.Failed)
+      }
+    }
   }
 
   async syncForegroundState(): Promise<void> {
@@ -205,6 +231,8 @@ export class RaceController {
     this.pendingRaceState = null
     this.raceStateRequest = null
     this.foregroundSync = null
+    // 断联后的自动重连必须创建新连接，不能复用旧连接尚未结束的同步 Promise。
+    this.connectionAttempt = null
     if (pendingRaceState) {
       clearTimeout(pendingRaceState.timeoutId)
       pendingRaceState.reject(error)
@@ -226,8 +254,31 @@ export class RaceController {
 
     this.sendQueue = Promise.resolve()
     this.raceStore.setConnectionState(ConnectionState.Disconnected)
+    this.raceStore.setAutoConnectState(AutoConnectState.Idle)
     this.raceStore.setFirmwareState(FirmwareDetectionState.Unknown)
     this.raceStore.setAthleteTransferState('idle')
+    void this.autoConnect()
+  }
+
+  private async getOrStartConnectionAttempt(): Promise<void> {
+    if (this.connectionAttempt) return this.connectionAttempt
+    const operation = this.performConnection()
+    this.connectionAttempt = operation
+    try {
+      await operation
+    } finally {
+      if (this.connectionAttempt === operation) this.connectionAttempt = null
+    }
+  }
+
+  private async performConnection(): Promise<void> {
+    await this.transport.connect()
+    this.raceStore.setConnectionState(ConnectionState.Connected)
+    await this.syncForegroundState()
+  }
+
+  private isConnected(): boolean {
+    return this.raceStore.snapshot.connectionState === ConnectionState.Connected
   }
 
   private async performForegroundSync(): Promise<void> {

@@ -41,19 +41,20 @@ export class BleTransport {
 
   async connect(): Promise<void> {
     const connectionEpoch = ++this.connectionEpoch
-    await this.api.openAdapter()
-    this.state = 'scanning'
-    // Register the discovery callback before scanning. With duplicate
-    // callbacks disabled, a fast advertiser can otherwise be discovered
-    // before the listener exists and never be reported again.
-    const devicePromise = this.api.waitForDevice(TARGET_DEVICE_NAME)
-    await this.api.startDiscovery()
-    const device = await devicePromise
-    await this.api.stopDiscovery()
-
-    this.state = 'connecting'
-    this.deviceId = device.deviceId
+    let discoveryStarted = false
     try {
+      await this.api.openAdapter()
+      this.state = 'scanning'
+      // 必须先监听再扫描，避免设备首次广播发生在监听器注册之前。
+      const devicePromise = this.api.waitForDevice(TARGET_DEVICE_NAME)
+      await this.api.startDiscovery()
+      discoveryStarted = true
+      const device = await devicePromise
+      await this.api.stopDiscovery()
+      discoveryStarted = false
+
+      this.state = 'connecting'
+      this.deviceId = device.deviceId
       await this.api.createConnection(device.deviceId)
       this.ensureConnectionAttempt(connectionEpoch, device.deviceId)
       const services = await this.api.getServices(device.deviceId)
@@ -81,6 +82,13 @@ export class BleTransport {
       this.notificationCharacteristicId = notificationTx.uuid
       this.state = 'connected'
     } catch (error) {
+      if (discoveryStarted) {
+        try {
+          await this.api.stopDiscovery()
+        } catch {
+          // 扫描清理失败不能覆盖本轮连接的原始失败原因。
+        }
+      }
       if (this.connectionEpoch === connectionEpoch) this.clearConnection()
       throw error
     }

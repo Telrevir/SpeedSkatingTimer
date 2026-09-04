@@ -16,6 +16,7 @@ export interface RaceRecord {
   startedAt: number
   finishedAt: number | null
   scores: LapScoreRecord[]
+  participantIds?: number[]
 }
 
 export interface ScoreStorage {
@@ -73,6 +74,20 @@ export class ScoreRepository {
     return this.records.map(cloneRace)
   }
 
+  importIfMissing(record: RaceRecord): boolean {
+    validateImportedRace(record)
+    if (this.records.some(({ id }) => id === record.id)) return false
+    const imported = cloneRace(record)
+    if (imported.participantIds) imported.participantIds = [...new Set(imported.participantIds)]
+    const next = [...this.records.map(cloneRace), imported]
+    // 历史导入不接管 currentId；写入失败不改变内存，也不发布未落盘数据。
+    this.storage.write(next.map(cloneRace))
+    this.records = next
+    const snapshot = this.listRaces()
+    this.listeners.forEach((listener) => listener(snapshot))
+    return true
+  }
+
   subscribe(listener: (records: RaceRecord[]) => void): () => void {
     this.listeners.add(listener)
     listener(this.listRaces())
@@ -98,5 +113,34 @@ function parseRecords(value: unknown): RaceRecord[] {
 }
 
 function cloneRace(record: RaceRecord): RaceRecord {
-  return { ...record, scores: record.scores.map((score) => ({ ...score })) }
+  return { ...record, scores: record.scores.map((score) => ({ ...score })),
+    ...(record.participantIds === undefined ? {} : { participantIds: [...record.participantIds] }) }
+}
+
+function validateImportedRace(record: RaceRecord): void {
+  if (!record || typeof record.id !== 'string' || !record.id.trim()
+    || !Number.isFinite(record.startedAt)
+    || (record.finishedAt !== null && !Number.isFinite(record.finishedAt))
+    || !Array.isArray(record.scores)
+    || (record.participantIds !== undefined && (!Array.isArray(record.participantIds)
+      || Array.from(record.participantIds).some((id) => !validAthleteId(id))))) {
+    throw new Error('导入比赛资料不合法')
+  }
+  for (const score of record.scores) {
+    if (!score || !validAthleteId(score.athleteId) || typeof score.name !== 'string' || !score.name.trim()
+      || typeof score.epc !== 'string' || !/^[0-9A-Fa-f]{8}$/.test(score.epc)
+      || !validCount(score.lap) || !validCount(score.rank)
+      || !validCount(score.lapCentiseconds) || !validCount(score.totalCentiseconds)
+      || [score.rawLap, score.correctionOffset, score.correctedLap].some((count) => count !== undefined && !validCount(count))) {
+      throw new Error('导入成绩资料不合法')
+    }
+  }
+}
+
+function validAthleteId(value: number): boolean {
+  return Number.isInteger(value) && value >= 1 && value <= 65535
+}
+
+function validCount(value: number): boolean {
+  return Number.isInteger(value) && value >= 0 && value <= 0x7fffffff
 }

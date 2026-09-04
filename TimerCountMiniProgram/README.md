@@ -34,10 +34,53 @@
 
 - 微信小程序无法保证 iOS 后台持续运行或持续接收 BLE 通知。恢复前台后的 `0x11` 同步用于取回固件仍保存的当前运动员状态。
 - 自动连接每次只执行一轮 10 秒目标设备扫描；本轮未找到后会在下次回到前台或比赛页再次显示时重试，不在后台持续轮询。
-- 运动员主档和比赛会话只保存在当前微信客户端；清理存储、删除小程序数据或更换手机可能丢失。
-- 扫描添加、导入导出、云同步、多 EPC 和测试专用界面尚未实现。
+- 本地记录仍是权威数据源；启动同步是打开小程序时的保守合并，不等同于已完成的双向云备份，也未做真机/真实接口联调。清理存储、删除小程序数据或更换手机仍可能丢失尚未同步的数据。
+- 扫描添加、导入导出、完整双向云同步、多 EPC 和测试专用界面尚未实现。
 - 每场最多 50 名运动员，并分别最多成功定义 50 个运动员 EPC 和 50 个非运动员 EPC。
 - 自动补圈是小程序侧估算补偿，不代表精确过线时间；正式使用前仍需用真实比赛数据校准阈值并完成裁判验收。
+
+## 后端接口与启动同步
+
+接口层位于 `miniprogram/services/backend-api/`，协调层位于 `miniprogram/services/backend-sync/`（启动同步）。使用 `wx.request`，不使用 curl，不依赖页面、蓝牙或本地仓库；协议以 `后端服务器/docs/api-protocol.md` 为准。
+
+接口文件职责：
+
+| 文件 | 职责与接口 |
+| --- | --- |
+| `backend-api/config.ts` | 集中配置地址、5 秒超时和暂用 `ClubID: 1`；不读取账号文件 |
+| `backend-api/request.ts` | JSON 请求、查询参数编码、统一返回状态；仅 HTTP 2xx 且 `code === 0` 成功，信封层不做业务映射 |
+| `backend-api/athletes.ts` | 新增、分页读取 `/athletes` |
+| `backend-api/groups.ts` | 新增、分页读取 `/athlete-groups` |
+| `backend-api/group-members.ts` | 新增、分页读取 `/athlete-group-forms` |
+| `backend-api/race-bundles.ts` | 一次 POST `/race-bundles`，接收 `RaceInfo`、`AthleteRaceJoins`、`Scores`，不拆分请求 |
+| `backend-api/sync-data.ts` | GET `/race-bundles?ClubID={clubId}&includeDisabled=true`，读取俱乐部全量数据 |
+| `backend-sync/validation.ts` | 导入前运行时校验快照：ClubID、ID 安全整数与唯一性、跨表引用、日期、EPC 与姓名范围 |
+| `backend-sync/id-mapping.ts` | 按 ClubID 隔离的稳定数字 ID 映射（`timer_count_backend_sync_ids_v1`），重启不漂移、损坏拒绝重置、可查询远端占用 |
+| `backend-sync/race-mapping.ts` | 本地比赛 ↔ RaceBundle 互转；百分秒原样；首次上传不带 RaceID，绑定后端返回的 RaceID 后携带 |
+| `backend-sync/comparison.ts` | 运动员/分组/比赛与远端快照的一致性比较 |
+| `backend-sync/startup-sync.ts` | 启动协调：拉取→校验→按 运动员→分组/关系→比赛 顺序保守合并 |
+
+启动行为（`App.onLaunch` 非阻塞运行一次，不弹窗、不阻断 BLE、不自动重试）：
+
+- 正常空数组视为有效空库，上传本地独有数据；网络/业务失败、损坏响应、ClubID 不符直接跳过本轮。
+- 相同忽略、远端独有导入（只增不覆盖）、本地独有上传、冲突保留本地；无可靠删除依据不删除，活动比赛或等待期间本地变化立即停止后续动作。
+- 上传前先持久化 ID 映射；POST 成功以**回执身份与内容校验**为准（`data: null`、错误 ClubID、错误 ID 都算失败，不放行依赖上传）。
+- 既有持久映射的子记录 ID 若已被另一云端父记录占用（如云端删除后自增复用），上传前核对发现即整体跳过并记冲突，避免错误 upsert 覆盖别的比赛或分组。
+- 比赛查重只使用 `RaceID`：新比赛首次上传不带 `RaceID`，后端分配后随成功响应返回，小程序自动把它绑定并持久化到该本地比赛（`id-mapping` 的 race 绑定）；之后重传/更新同一场比赛携带同一 `RaceID`（后端按 `RaceID` 覆盖更新，`RaceID` 已属其他俱乐部则拒绝）。
+- 新比赛包时间单位是百分秒，与本地一致；不乘 10、不创建虚拟成绩。DTO 类型只提供编译期约束，正式导入前必须通过 `validation.ts` 运行时校验。
+- 单资源 `list` 是分页接口（每页最多 200，含禁用数据）；全量读取使用 `SyncDataApi.fetchAll`，不能拿单页当全量。全量接口读取禁用记录不等于授权删除本地记录。
+
+仍待人工确认：真实接口的回执形状与本文档校验假设一致、合法 request 域名、正式 ClubID 来源、跨设备 ID 冲突与唯一约束失败的错误码。尚未做真机或真实新接口联调（不得用真实接口做写测试）；此前电脑端单独调用运动员接口成功不代表全量同步已验证。
+
+
+
+## 旧临时上传（已停用，保留现场代码）
+
+`temporary-backend-sync.ts` 保留作历史参考，`TEMPORARY_BACKEND_SYNC_ENABLED` 为 `false`，已移除 `app.ts` 启动入口和 `app-services.ts` 装配。原有调试日志、仅上传有效运动员的现场改动均保留，旧模块未迁入新接口层。
+
+旧临时 ID 存储键 `timer_count_temporary_backend_ids_v1` 未清理；其逐条 POST、时间乘 10 等行为不适用于新比赛包契约，不应直接重新启用。保留的旧逻辑测试只在隔离测试环境显式启用，另有默认禁用及启动不上传的检查。
+
+
 
 ## 目录
 

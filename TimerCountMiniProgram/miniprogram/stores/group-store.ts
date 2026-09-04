@@ -53,6 +53,25 @@ export class GroupStore {
     return { ...group, athleteIds: [...group.athleteIds] }
   }
 
+  importIfMissing(group: AthleteGroup): boolean {
+    if (!group || typeof group.id !== 'string' || !group.id.trim()
+      || typeof group.name !== 'string' || !group.name.trim()
+      || !Number.isFinite(group.createdAt) || !Number.isFinite(group.updatedAt)
+      || !Array.isArray(group.athleteIds)
+      || Array.from(group.athleteIds).some((id) => !Number.isInteger(id) || id < 1 || id > 65535)) {
+      throw new Error('导入分组资料不合法')
+    }
+    const name = group.name.trim()
+    if (this.groups.some((existing) => existing.id === group.id || existing.name === name)) return false
+    const imported = { ...group, name, athleteIds: [...new Set(group.athleteIds)] }
+    const next = [...this.snapshot, imported]
+    // 导入先落盘再发布，且存储与内存不共享可变的成员数组。
+    this.storage.write(next.map((item) => ({ ...item, athleteIds: [...item.athleteIds] })))
+    this.groups = next
+    this.notify()
+    return true
+  }
+
   update(id: string, name: string, athleteIds: number[]): void {
     const normalizedName = name.trim()
     if (!normalizedName) throw new Error('分组名称不能为空')

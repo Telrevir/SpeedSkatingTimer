@@ -96,6 +96,27 @@ export class AthleteCatalogService {
     })
   }
 
+  importIfMissing(profile: AthleteProfile, canImport: () => boolean = () => true): Promise<boolean> {
+    return this.enqueue(() => {
+      // 同步等待期间本地可能变化，必须在现有写队列内部再次检查。
+      if (!canImport()) return false
+      if (!profile || !Number.isInteger(profile.id) || profile.id < 1 || profile.id > 65535
+        || (profile.status !== 'active' && profile.status !== 'archived')
+        || !Number.isFinite(profile.createdAt) || !Number.isFinite(profile.updatedAt)
+        || (profile.archivedAt !== null && !Number.isFinite(profile.archivedAt))) {
+        throw new Error('导入运动员资料不合法')
+      }
+      const imported = { ...profile, name: normalizeName(profile.name), epc: normalizeEpc(profile.epc) }
+      // 云端导入更保守：归档记录的 ID 和 EPC 也不能被其他资料占用。
+      if (this.catalog.athletes.some(({ id, epc }) => id === imported.id || epc === imported.epc)) return false
+      const next = cloneCatalog(this.catalog)
+      next.athletes.push(imported)
+      next.nextId = Math.max(next.nextId, imported.id + 1)
+      this.persist(next)
+      return true
+    })
+  }
+
   update(id: number, name: string, epc: string): Promise<AthleteProfile> {
     return this.enqueue(() => {
       const normalizedName = normalizeName(name)

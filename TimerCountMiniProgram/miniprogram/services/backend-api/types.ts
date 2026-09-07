@@ -31,14 +31,19 @@ export interface RaceInfoDto {
 
 export interface RaceJoinDto {
   id?: number
-  RaceID?: number
+  RaceID: number
   AthleteID: number
   Enabled: boolean
 }
 
+/** 完整比赛包首次上传时，后端允许省略子记录的父比赛 ID。 */
+export interface RaceBundleJoinDto extends Omit<RaceJoinDto, 'RaceID'> {
+  RaceID?: number
+}
+
 export interface ScoreDto {
   ScoreID?: number
-  RaceID?: number
+  RaceID: number
   AthleteID: number
   ClientScoreKey: string
   EventSequence: number
@@ -49,10 +54,15 @@ export interface ScoreDto {
   Enabled: boolean
 }
 
+/** 完整比赛包首次上传时，后端允许省略子记录的父比赛 ID。 */
+export interface RaceBundleScoreDto extends Omit<ScoreDto, 'RaceID'> {
+  RaceID?: number
+}
+
 export interface RaceBundleDto {
   RaceInfo: RaceInfoDto
-  AthleteRaceJoins: RaceJoinDto[]
-  Scores: ScoreDto[]
+  AthleteRaceJoins: RaceBundleJoinDto[]
+  Scores: RaceBundleScoreDto[]
 }
 
 export interface PageResultDto<T> {

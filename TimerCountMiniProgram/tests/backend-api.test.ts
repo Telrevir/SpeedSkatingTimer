@@ -169,8 +169,9 @@ test('endpoint modules isolate every server route and omit generated IDs on crea
   })
   const athlete = { AthleteID: 7, ClubID: 1, AthleteName: '甲', AthleteEPC: 0, Enabled: true }
   const group = { AthleteGroupID: 11, ClubID: 1, AthleteGroupName: '一队', Enabled: true }
-  const member = { AthleteGroupFormID: 12, AthleteGroupID: 11, AthleteID: 7, Enabled: true }
-  const bundle = { AthleteGroup: group, AthleteGroupForms: [member] }
+  const groupMember = { AthleteGroupFormID: 12, AthleteGroupID: 11, AthleteID: 7, Enabled: true }
+  const raceJoin = { AthleteID: 7, Enabled: true }
+  const bundle = { AthleteGroup: group, AthleteGroupForms: [groupMember] }
   const race = {
     RaceID: -1,
     ClientRaceKey: 'race-local-1',
@@ -203,7 +204,7 @@ test('endpoint modules isolate every server route and omit generated IDs on crea
   await deleteGroupBundle(client, 11)
   await createRace(client, race)
   await createScore(client, score)
-  await saveRaceBundle(client, { RaceInfo: race, AthleteRaceJoins: [member], Scores: [score] })
+  await saveRaceBundle(client, { RaceInfo: race, AthleteRaceJoins: [raceJoin], Scores: [score] })
   await listRaceBundles(client, { ClubID: 1, page: 2, pageSize: 20, sortBy: 'RaceDate', sortOrder: 'desc' })
   await listActiveRaces(client, 1)
   await listLatestScores(client, 101)
@@ -231,5 +232,42 @@ test('endpoint modules isolate every server route and omit generated IDs on crea
   assert.deepEqual(sent[10]!.data, {
     RaceID: 101, AthleteID: 7, ClientScoreKey: 'score-local-1', EventSequence: 1,
     LapCount: 0, SingleLapTime: 0, TotalTime: 0, Rank: 0, Enabled: true,
+  })
+})
+
+test('race bundle omits local generated IDs and preserves positive replay IDs', async () => {
+  const sent: TransportRequest[] = []
+  const client = new BackendClient(async (request) => {
+    sent.push(request)
+    return { statusCode: 200, data: { code: 0, data: request.data } }
+  })
+  const baseRace = {
+    ClientRaceKey: 'race-local-2', ClubID: 1, RaceDate: '2026-09-07 10:01:00', IsFinished: true, Enabled: true,
+  }
+  const baseScore = {
+    AthleteID: 7, ClientScoreKey: 'score-local-2', EventSequence: 2,
+    LapCount: 0, SingleLapTime: 0, TotalTime: 0, Rank: 0, Enabled: true,
+  }
+
+  await saveRaceBundle(client, {
+    RaceInfo: { ...baseRace, RaceID: -1 },
+    AthleteRaceJoins: [{ id: -1, RaceID: -1, AthleteID: 7, Enabled: true }],
+    Scores: [{ ...baseScore, ScoreID: -1, RaceID: -1 }],
+  })
+  await saveRaceBundle(client, {
+    RaceInfo: { ...baseRace, RaceID: 101 },
+    AthleteRaceJoins: [{ id: 201, RaceID: 101, AthleteID: 7, Enabled: true }],
+    Scores: [{ ...baseScore, ScoreID: 301, RaceID: 101 }],
+  })
+
+  assert.deepEqual(sent[0]!.data, {
+    RaceInfo: baseRace,
+    AthleteRaceJoins: [{ AthleteID: 7, Enabled: true }],
+    Scores: [baseScore],
+  })
+  assert.deepEqual(sent[1]!.data, {
+    RaceInfo: { ...baseRace, RaceID: 101 },
+    AthleteRaceJoins: [{ id: 201, RaceID: 101, AthleteID: 7, Enabled: true }],
+    Scores: [{ ...baseScore, ScoreID: 301, RaceID: 101 }],
   })
 })

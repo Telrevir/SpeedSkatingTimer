@@ -5,7 +5,9 @@
 ## 当前架构
 
 - `AthleteCatalogService` 管理本地运动员主档；ID 范围 `1..65535`，自动递增，归档后不复用。
-- `ActiveRaceSessionRepository` 以 schemaVersion 2 保存当前参赛 ID、活动分组 ID、定义成功数、本地比赛阶段与结束圈，以及每名运动员的原始圈数、补圈偏移、最后总时长和真实圈速历史；仍兼容 schemaVersion 1，成功重置后清除。
+- `ActiveRaceSessionRepository` 以 schemaVersion 3 保存当前参赛 ID、活动分组 ID、定义成功数、本地比赛阶段与结束圈、比赛同步身份，以及每名运动员的原始圈数、补圈偏移、最后总时长和真实圈速历史；仍兼容 schemaVersion 1、2，成功重置后清除。
+- `ScoreRepository` 的版本化工作副本为每场比赛保存不可变的 `localId`、`ClientRaceKey`、可空 `RaceID` 和同步状态；每条真实成绩保存 `localScoreId`、`ClientScoreKey`、事件序号和可空 `ScoreID`。旧本地比赛记录可读并在下一次写入时迁移，在线完成后的清理由后续同步生命周期确认后执行。
+- `RaceOutboxRepository` 通过独立持久存储保存 create → score → finish 的依赖任务；相同 `ClientScoreKey` 合并，`400/409` 进入保留状态，不会因损坏的任务存储覆盖原始数据。
 - `EpcDefinitionQueue` 严格串行发送 `0x10`，每条只等待匹配的 `0xF0`；成功才增加对应计数，失败不重试。
 - `LocalRaceScoring` 保留 `0x12` 原始圈数，并通过独立 `LapCorrectionEngine` 维护累计补圈偏移。排名和领滑按修正圈数降序、总用时升序、ID 升序；固件单圈字段仍原样显示，估算圈不伪造单圈时间。
 - `RaceController` 分别协调前台同步、EPC 定义和成绩接收。`0x10` 与 `0x12` 无耦合。

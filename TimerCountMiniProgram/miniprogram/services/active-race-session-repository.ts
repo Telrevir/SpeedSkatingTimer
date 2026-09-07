@@ -1,4 +1,5 @@
 import type { ActiveRaceSession } from '../domain/active-race-session'
+import { isRaceIdentity } from '../domain/race-identity'
 import type {
   LocalLapCorrectionState,
   LocalRacePhase,
@@ -19,6 +20,11 @@ interface StoredActiveRaceSessionV2 extends ActiveRaceSession {
   lapCorrectionStates: LocalLapCorrectionState[]
 }
 
+interface StoredActiveRaceSessionV3 extends ActiveRaceSession {
+  schemaVersion: 3
+  lapCorrectionStates: LocalLapCorrectionState[]
+}
+
 export class ActiveRaceSessionRepository {
   constructor(private readonly storage: ActiveRaceSessionStorage) {}
 
@@ -29,8 +35,8 @@ export class ActiveRaceSessionRepository {
 
   save(session: ActiveRaceSession): void {
     assertSession(session)
-    const stored: StoredActiveRaceSessionV2 = {
-      schemaVersion: 2,
+    const stored: StoredActiveRaceSessionV3 = {
+      schemaVersion: 3,
       ...cloneSession(session),
       lapCorrectionStates: cloneCorrectionStates(session.lapCorrectionStates ?? []),
     }
@@ -80,18 +86,21 @@ export class ActiveRaceSessionRepository {
 function parseSession(value: unknown): ActiveRaceSession | null {
   if (!value || typeof value !== 'object') return null
   const candidate = value as Partial<ActiveRaceSession> & { schemaVersion?: unknown }
-  if (candidate.schemaVersion !== 1 && candidate.schemaVersion !== 2) return null
+  if (candidate.schemaVersion !== 1 && candidate.schemaVersion !== 2 && candidate.schemaVersion !== 3) return null
   const session: ActiveRaceSession = {
     participantIds: Array.isArray(candidate.participantIds) ? candidate.participantIds : [],
     activeGroupId: candidate.activeGroupId ?? null,
     athleteDefinitionCount: candidate.athleteDefinitionCount ?? -1,
     nonAthleteDefinitionCount: candidate.nonAthleteDefinitionCount ?? -1,
   }
-  if (candidate.schemaVersion === 2) {
+  if (candidate.schemaVersion === 2 || candidate.schemaVersion === 3) {
     if (!Array.isArray(candidate.lapCorrectionStates)) return null
     session.lapCorrectionStates = candidate.lapCorrectionStates
     session.localPhase = candidate.localPhase ?? 'running'
     session.finishLap = candidate.finishLap ?? null
+  }
+  if (candidate.schemaVersion === 3 && candidate.raceIdentity !== undefined) {
+    session.raceIdentity = candidate.raceIdentity
   }
   try {
     assertSession(session)
@@ -141,6 +150,9 @@ function assertSession(session: ActiveRaceSession): void {
       throw new Error('结束阶段必须保存有效结束圈')
     }
   }
+  if (session.raceIdentity !== undefined && !isRaceIdentity(session.raceIdentity)) {
+    throw new Error('比赛同步身份格式无效')
+  }
 }
 
 function cloneSession(session: ActiveRaceSession): ActiveRaceSession {
@@ -150,6 +162,7 @@ function cloneSession(session: ActiveRaceSession): ActiveRaceSession {
     ...(session.lapCorrectionStates === undefined
       ? {}
       : { lapCorrectionStates: cloneCorrectionStates(session.lapCorrectionStates) }),
+    ...(session.raceIdentity === undefined ? {} : { raceIdentity: { ...session.raceIdentity } }),
   }
 }
 

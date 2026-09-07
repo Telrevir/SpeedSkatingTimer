@@ -1,13 +1,17 @@
 import type { ScoreStorage } from '../services/score-repository'
 
-const STORAGE_KEY = 'roller-timer-race-records-v1'
+const WORKING_COPY_STORAGE_KEY = 'roller-timer-race-working-copies-v2'
+const LEGACY_STORAGE_KEY = 'roller-timer-race-records-v1'
 
 export class WechatScoreStorage implements ScoreStorage {
   read(): unknown {
-    return wx.getStorageSync(STORAGE_KEY)
+    const workingCopies = wx.getStorageSync(WORKING_COPY_STORAGE_KEY)
+    return workingCopies === '' || workingCopies === undefined || workingCopies === null
+      ? wx.getStorageSync(LEGACY_STORAGE_KEY)
+      : workingCopies
   }
 
   write(value: unknown): void {
-    wx.setStorageSync(STORAGE_KEY, value)
+    wx.setStorageSync(WORKING_COPY_STORAGE_KEY, value)
   }
 }

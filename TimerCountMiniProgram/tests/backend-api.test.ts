@@ -6,6 +6,21 @@ import { GroupsApi } from '../miniprogram/services/backend-api/groups'
 import { GroupMembersApi } from '../miniprogram/services/backend-api/group-members'
 import { RaceBundlesApi } from '../miniprogram/services/backend-api/race-bundles'
 import { SyncDataApi } from '../miniprogram/services/backend-api/sync-data'
+import { listAthletes } from '../miniprogram/services/backend-api/athletes/list-athletes'
+import { createAthlete } from '../miniprogram/services/backend-api/athletes/create-athlete'
+import { updateAthlete } from '../miniprogram/services/backend-api/athletes/update-athlete'
+import { deleteAthlete } from '../miniprogram/services/backend-api/athletes/delete-athlete'
+import { listGroups } from '../miniprogram/services/backend-api/groups/list-groups'
+import { listGroupMembers } from '../miniprogram/services/backend-api/groups/list-group-members'
+import { createGroupBundle } from '../miniprogram/services/backend-api/groups/create-group-bundle'
+import { updateGroupBundle } from '../miniprogram/services/backend-api/groups/update-group-bundle'
+import { deleteGroupBundle } from '../miniprogram/services/backend-api/groups/delete-group-bundle'
+import { createRace } from '../miniprogram/services/backend-api/races/create-race'
+import { createScore } from '../miniprogram/services/backend-api/races/create-score'
+import { saveRaceBundle } from '../miniprogram/services/backend-api/races/save-race-bundle'
+import { listRaceBundles } from '../miniprogram/services/backend-api/races/list-race-bundles'
+import { listActiveRaces } from '../miniprogram/services/backend-api/races/list-active-races'
+import { listLatestScores } from '../miniprogram/services/backend-api/races/list-latest-scores'
 
 test('backend request sends JSON through wx.request and returns the business payload', async () => {
   const runtime = globalThis as unknown as { wx?: unknown }
@@ -144,4 +159,77 @@ test('all-data fetch uses the confirmed race-bundles path with explicit or confi
   if (result.ok) assert.deepEqual(result.data, { ClubID: 3, Athletes: [], AthleteGroups: [], AthleteGroupForms: [], RaceBundles: [] })
   assert.deepEqual(sent.map((request) => new URL(request.url).pathname + new URL(request.url).search), ['/api/v1/race-bundles?ClubID=3&includeDisabled=true', '/api/v1/race-bundles?ClubID=1&includeDisabled=true'])
   assert.ok(sent.every((request) => request.method === 'GET'))
+})
+
+test('endpoint modules isolate every server route and omit generated IDs on create', async () => {
+  const sent: TransportRequest[] = []
+  const client = new BackendClient(async (request) => {
+    sent.push(request)
+    return { statusCode: 200, data: { code: 0, data: request.data ?? { list: [], total: 0 } } }
+  })
+  const athlete = { AthleteID: 7, ClubID: 1, AthleteName: '甲', AthleteEPC: 0, Enabled: true }
+  const group = { AthleteGroupID: 11, ClubID: 1, AthleteGroupName: '一队', Enabled: true }
+  const member = { AthleteGroupFormID: 12, AthleteGroupID: 11, AthleteID: 7, Enabled: true }
+  const bundle = { AthleteGroup: group, AthleteGroupForms: [member] }
+  const race = {
+    RaceID: -1,
+    ClientRaceKey: 'race-local-1',
+    ClubID: 1,
+    RaceDate: '2026-09-07 10:00:00',
+    IsFinished: false,
+    Enabled: true,
+  }
+  const score = {
+    ScoreID: -1,
+    RaceID: 101,
+    AthleteID: 7,
+    ClientScoreKey: 'score-local-1',
+    EventSequence: 1,
+    LapCount: 0,
+    SingleLapTime: 0,
+    TotalTime: 0,
+    Rank: 0,
+    Enabled: true,
+  }
+
+  await listAthletes(client, { ClubID: 1, page: 2, pageSize: 20, includeDisabled: true })
+  await createAthlete(client, athlete)
+  await updateAthlete(client, 7, athlete)
+  await deleteAthlete(client, 7)
+  await listGroups(client, { ClubID: 1, page: 2, pageSize: 20, includeDisabled: true })
+  await listGroupMembers(client, { AthleteGroupID: 11, page: 2, pageSize: 20, includeDisabled: true })
+  await createGroupBundle(client, bundle)
+  await updateGroupBundle(client, 11, bundle)
+  await deleteGroupBundle(client, 11)
+  await createRace(client, race)
+  await createScore(client, score)
+  await saveRaceBundle(client, { RaceInfo: race, AthleteRaceJoins: [member], Scores: [score] })
+  await listRaceBundles(client, { ClubID: 1, page: 2, pageSize: 20, sortBy: 'RaceDate', sortOrder: 'desc' })
+  await listActiveRaces(client, 1)
+  await listLatestScores(client, 101)
+
+  assert.deepEqual(sent.map((request) => `${request.method} ${new URL(request.url).pathname}${new URL(request.url).search}`), [
+    'GET /api/v1/athletes?ClubID=1&page=2&pageSize=20&includeDisabled=true',
+    'POST /api/v1/athletes',
+    'PUT /api/v1/athletes/7',
+    'DELETE /api/v1/athletes/7',
+    'GET /api/v1/athlete-groups?ClubID=1&page=2&pageSize=20&includeDisabled=true',
+    'GET /api/v1/athlete-group-forms?AthleteGroupID=11&page=2&pageSize=20&includeDisabled=true',
+    'POST /api/v1/athlete-group-bundles',
+    'PUT /api/v1/athlete-group-bundles/11',
+    'DELETE /api/v1/athlete-group-bundles/11',
+    'POST /api/v1/races',
+    'POST /api/v1/scores',
+    'POST /api/v1/race-bundles',
+    'GET /api/v1/race-bundles/page?ClubID=1&page=2&pageSize=20&sortBy=RaceDate&sortOrder=desc',
+    'GET /api/v1/races/active?ClubID=1',
+    'GET /api/v1/races/101/latest-scores',
+  ])
+  assert.deepEqual(sent[9]!.data, {
+    ClientRaceKey: 'race-local-1', ClubID: 1, RaceDate: '2026-09-07 10:00:00', IsFinished: false, Enabled: true,
+  })
+  assert.deepEqual(sent[10]!.data, {
+    RaceID: 101, AthleteID: 7, ClientScoreKey: 'score-local-1', EventSequence: 1,
+    LapCount: 0, SingleLapTime: 0, TotalTime: 0, Rank: 0, Enabled: true,
+  })
 })

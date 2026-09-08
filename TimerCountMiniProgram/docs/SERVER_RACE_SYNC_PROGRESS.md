@@ -34,7 +34,7 @@
 
 ## 已完成：Task 2（运动员、分组服务端权威联合缓存）
 
-已提交本地 Git 提交 `40c0e08`（`feat: add authoritative athlete group cache`），未推送远端。
+已提交本地 Git 提交 `40c0e08`（`feat: add authoritative athlete group cache`）及审查修正 `d432f4c`（`fix: complete authoritative catalog management`），未推送远端。
 
 - 新增 `schemaVersion: 2` 的 ClubID 隔离联合缓存；运动员、分组及其软删除状态仅在所有分页数据验证完成后一次性写入。
 - 任一分页请求、分页一致性、关联或本地写入失败时，保留原有完整缓存且不会发布半成品；旧 v1 运动员/分组存储仅保留为 v2 缓存缺失或损坏时的兼容读取回退。
@@ -64,4 +64,4 @@
 
 ## 下一步
 
-按 `docs/superpowers/plans/2026-09-07-miniprogram-server-race-sync.md` 的顺序，继续 **Task 3：启动编排与页面接入**；开始前重新核对工作区与最终服务端接口。
+本轮交接已完成。下一步按 `docs/superpowers/plans/2026-09-07-miniprogram-server-race-sync.md` 的顺序继续 **Task 3：启动编排与页面接入**；先构造并注入 `CatalogCacheSync`、两类管理服务及其 `mappingStorage`，再接入页面。不得覆盖上述工作区保护列表；不需要重做 Task 2 的缓存、管理服务或映射测试。

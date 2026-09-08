@@ -16,7 +16,7 @@
 
 ## 已完成：Task 1（按端点隔离 API）
 
-已提交本地 Git 提交 `c40c62a`（`refactor: separate backend endpoint modules`）及验收修正 `f3c5154`（`fix: omit local IDs from race bundle uploads`），未推送远端。
+已提交本地 Git 提交 `c40c62a`（`refactor: separate backend endpoint modules`）及验收修正 `fe1f9b4`（`fix: omit local IDs from race bundle uploads`），未推送远端。
 
 - 新增共享 DTO 和每端点一个函数模块，覆盖运动员、分组、分组成员、分组聚合写入、比赛创建、成绩创建、完整比赛包、分页比赛、活动比赛和最新成绩。
 - `BackendClient` 仍只负责泛用 HTTP 信封与规范化状态；端点模块不含重试、存储、Toast、Worker 或跨接口编排。
@@ -29,6 +29,18 @@
 - `miniprogram/services/backend-api/types.ts`
 - `miniprogram/services/backend-api/races/save-race-bundle.ts`
 - `tests/backend-api.test.ts`
+
+
+
+## 已完成：Task 2（运动员、分组服务端权威联合缓存）
+
+本次提交前完成，未推送远端。
+
+- 新增 `schemaVersion: 2` 的 ClubID 隔离联合缓存；运动员、分组及其软删除状态仅在所有分页数据验证完成后一次性写入。
+- 任一分页请求、分页一致性、关联或本地写入失败时，保留原有完整缓存且不会发布半成品；旧 v1 运动员/分组存储仅保留为 v2 缓存缺失或损坏时的兼容读取回退。
+- 新增运动员与分组远端优先管理服务：本地验证 → 请求 → 严格回执比对 → 一次缓存写入 → 订阅发布；分组仅走聚合包端点。
+- 服务端已成功而本地写入失败时，返回“服务器已保存，本地刷新失败”，并立即尝试重新拉取服务端目录。
+- 新增联合缓存与管理服务测试；`npm run typecheck` 通过。完整 `npm test` 为 233/239 通过，剩余 6 项为既有 BLE UUID fixture 不匹配。
 
 
 
@@ -51,4 +63,4 @@
 
 ## 下一步
 
-按 `docs/superpowers/plans/2026-09-07-miniprogram-server-race-sync.md` 的顺序，从 **Task 2：将运动员和分组存储改为服务端权威缓存** 开始；开始前重新核对工作区与最终服务端接口。
+按 `docs/superpowers/plans/2026-09-07-miniprogram-server-race-sync.md` 的顺序，继续 **Task 3：启动编排与页面接入**；开始前重新核对工作区与最终服务端接口。

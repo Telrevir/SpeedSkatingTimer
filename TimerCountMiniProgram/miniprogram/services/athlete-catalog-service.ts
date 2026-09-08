@@ -177,6 +177,14 @@ export class AthleteCatalogService {
     return () => this.listeners.delete(listener)
   }
 
+  /** 联合缓存已原子落盘后调用：仅发布内存快照，不能再次写旧版存储。 */
+  replaceFromServer(catalog: AthleteCatalog): void {
+    const next = cloneCatalog(catalog)
+    next.activeEpcIndex = buildActiveEpcIndex(next.athletes)
+    this.catalog = next
+    this.notify()
+  }
+
   private enqueue<T>(operation: () => T): Promise<T> {
     const result = this.writeQueue.then(operation)
     this.writeQueue = result.then(() => undefined, () => undefined)

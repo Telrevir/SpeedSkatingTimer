@@ -126,6 +126,16 @@ export class GroupStore {
     return () => this.listeners.delete(listener)
   }
 
+  /** 联合缓存已原子落盘后调用：仅更新内存并保留仍存在的当前选择。 */
+  replaceFromServer(groups: AthleteGroup[]): void {
+    const next = parseGroups(groups)
+    this.groups = next
+    if (this.activeGroupId !== null && !next.some((group) => group.id === this.activeGroupId)) {
+      this.activeGroupId = null
+    }
+    this.notify()
+  }
+
   private persist(): void {
     this.storage.write(this.groups)
     this.notify()
@@ -155,5 +165,8 @@ function parseGroups(value: unknown): AthleteGroup[] {
     athleteIds: uniqueIds(group.athleteIds),
     createdAt: typeof group.createdAt === 'number' ? group.createdAt : 0,
     updatedAt: typeof group.updatedAt === 'number' ? group.updatedAt : 0,
+    ...(typeof group.enabled === 'boolean' ? { enabled: group.enabled } : {}),
+    ...(group.memberEnabled && typeof group.memberEnabled === 'object' && !Array.isArray(group.memberEnabled)
+      ? { memberEnabled: { ...group.memberEnabled } } : {}),
   }))
 }

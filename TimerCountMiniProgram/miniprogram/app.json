@@ -1,4 +1,5 @@
 {
+  "workers": "workers",
   "pages": [
     "pages/race/index",
     "pages/ranking/index",

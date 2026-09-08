@@ -28,3 +28,8 @@ import './protocol-log-store.test'
 import './protocol-log-page-subscription.test'
 import './catalog-cache-sync.test'
 import './server-authoritative-management.test'
+
+import './race-sync-scheduler.test'
+import './race-sync-worker-engine.test'
+import './race-sync-engine-port.test'
+import './worker-request-bridge.test'

@@ -17,6 +17,8 @@ import { StartupSync } from './backend-sync/startup-sync'
 import { CatalogCacheSync } from './backend-sync/catalog-cache-sync'
 import { CatalogCacheRepository } from './catalog-cache-repository'
 import { RaceOutboxRepository } from './race-outbox-repository'
+import { RaceSyncScheduler } from './backend-sync/race-sync-scheduler'
+import { createWechatEnginePort } from './backend-sync/race-sync-engine-port'
 import { AthleteManagementService } from './athlete-management-service'
 import { GroupManagementService } from './group-management-service'
 import { backendClient } from './backend-api/request'
@@ -49,8 +51,9 @@ export const groupManagement = new GroupManagementService({
   clubId: BACKEND_CONFIG.clubId, cache: catalogCacheRepository, athleteCatalog, groupStore,
   client: backendClient, mappingStorage,
 })
-export const startupSync = new StartupSync({
-  catalogRefresher: catalogSync,
-  // Task 5 会提供真正 Worker；这里仅唤醒持久队列的可运行项，绝不上传或下载比赛历史。
-  wakePendingRaces: () => { raceOutboxRepository.runnableTasks() },
+export const raceSyncScheduler = new RaceSyncScheduler({
+  outbox: raceOutboxRepository,
+  enginePort: createWechatEnginePort(),
+  // Task 6 注入比赛 DTO 执行器前，wake 只恢复调度器，不执行或改写既有任务。
 })
+export const startupSync = new StartupSync({ catalogRefresher: catalogSync, wakePendingRaces: () => raceSyncScheduler.wake() })

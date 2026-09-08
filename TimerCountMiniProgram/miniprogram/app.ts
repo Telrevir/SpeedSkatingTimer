@@ -1,4 +1,4 @@
-import { raceController, startupSync } from './services/app-services'
+import { raceController, raceSyncScheduler, startupSync } from './services/app-services'
 
 App({
   onLaunch() {
@@ -9,5 +9,6 @@ App({
   },
   onShow() {
     void raceController.autoConnect()
+    raceSyncScheduler.wake()
   },
 })

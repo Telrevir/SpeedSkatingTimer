@@ -235,11 +235,13 @@ test('app launch and later shows never start the legacy upload and keep BLE avai
   const originalModule = loadModule.cache[appPath]
   let hooks: { onLaunch?: () => void; onShow?: () => void } = {}
   let bluetoothCalls = 0
+  let wakeCalls = 0
   try {
     runtime.App = (value) => { hooks = value }
     loadModule.cache[servicesPath] = { exports: {
       temporaryBackendSync: f.sync, startupSync: { runOnce: async () => ({ state: 'skipped' }) },
       raceController: { autoConnect: async () => { bluetoothCalls += 1 } },
+      raceSyncScheduler: { wake: () => { wakeCalls += 1 } },
     } } as NodeModule
     delete loadModule.cache[appPath]
     loadModule(appPath)
@@ -251,6 +253,7 @@ test('app launch and later shows never start the legacy upload and keep BLE avai
     assert.equal(f.requests.length, 0)
     assert.equal(f.reads(), 0)
     assert.equal(bluetoothCalls, 2)
+    assert.equal(wakeCalls, 2)
   } finally {
     runtime.App = originalApp
     if (originalServices) loadModule.cache[servicesPath] = originalServices

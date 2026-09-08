@@ -8,6 +8,7 @@ import type { AthleteDto, GroupDto, GroupMemberDto, PageResultDto } from '../bac
 import type { AthleteCatalogService } from '../athlete-catalog-service'
 import type { CatalogCacheRepository } from '../catalog-cache-repository'
 import type { GroupStore } from '../../stores/group-store'
+import { SyncIdMapping, type MappingStorage } from './id-mapping'
 
 export interface CacheSyncStatus {
   state: 'completed' | 'failed'
@@ -20,6 +21,7 @@ interface Options {
   athleteCatalog: AthleteCatalogService
   groupStore: GroupStore
   client: BackendClient
+  mappingStorage?: MappingStorage
   now?: () => number
 }
 
@@ -54,6 +56,15 @@ export class CatalogCacheSync {
         forms.push(...await pages((page) => listGroupMembers(this.options.client, {
           AthleteGroupID: group.AthleteGroupID, page, pageSize: 200, includeDisabled: true,
         })))
+      }
+      if (this.options.mappingStorage) {
+        const ids = new SyncIdMapping(this.options.mappingStorage, this.options.clubId)
+        ids.reserve('group', groups.map((group) => group.AthleteGroupID))
+        ids.reserve('member', forms.map((form) => form.AthleteGroupFormID ?? 0))
+        groups.forEach((group) => ids.bind('group', groupKey(group.AthleteGroupID), group.AthleteGroupID))
+        forms.forEach((form) => ids.bind('member', memberKey(form.AthleteGroupID, form.AthleteID), form.AthleteGroupFormID!))
+        // 映射落盘失败时不能发布本次目录；远端 ID 也不会被新建请求误用。
+        ids.save()
       }
       const timestamp = this.now()
       const catalog = toCatalog(athletes, timestamp, this.options.clubId)
@@ -171,3 +182,6 @@ function toGroups(rows: GroupDto[], forms: GroupMemberDto[], athleteIds: Set<num
 function validId(value: number, max: number): boolean {
   return Number.isSafeInteger(value) && value >= 1 && value <= max
 }
+
+function groupKey(groupId: number): string { return `group:${groupId}` }
+function memberKey(groupId: number, athleteId: number): string { return `member:${groupId}:${athleteId}` }

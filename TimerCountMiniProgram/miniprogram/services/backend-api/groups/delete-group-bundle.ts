@@ -1,6 +1,10 @@
 import type { ApiResult, BackendClient } from '../request'
-import type { GroupBundleDto } from '../types'
 
-export function deleteGroupBundle(client: BackendClient, groupId: number): Promise<ApiResult<GroupBundleDto>> {
+export interface GroupBundleDeleteDto {
+  deleted: true
+  AthleteGroupID: number
+}
+
+export function deleteGroupBundle(client: BackendClient, groupId: number): Promise<ApiResult<GroupBundleDeleteDto>> {
   return client.request({ method: 'DELETE', path: `/athlete-group-bundles/${groupId}` })
 }

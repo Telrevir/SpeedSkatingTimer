@@ -69,6 +69,35 @@ export class AthleteManagementService {
     }
   }
 
+  async archive(id: number): Promise<ManagementResult> {
+    return this.setEnabled(id, false)
+  }
+
+  async restore(id: number): Promise<ManagementResult> {
+    return this.setEnabled(id, true)
+  }
+
+  private async setEnabled(id: number, enabled: boolean): Promise<ManagementResult> {
+    try {
+      const current = this.options.cache.load(this.options.clubId)
+      const existing = current.athletes.athletes.find((athlete) => athlete.id === id)
+      if (!existing) throw new Error('未找到运动员')
+      if ((existing.status === 'active') === enabled) throw new Error(enabled ? '运动员未归档' : '运动员已归档')
+      const athlete: AthleteProfile = {
+        ...existing,
+        status: enabled ? 'active' : 'archived',
+        archivedAt: enabled ? null : this.now(),
+        updatedAt: this.now(),
+      }
+      const dto = toDto(athlete, this.options.clubId)
+      const receipt = await updateAthlete(this.options.client, id, dto)
+      if (!receipt.ok || !sameDto(receipt.data, dto)) return failure(receipt.ok ? '服务器回执无效' : receipt.message)
+      return await this.commit(replace(current.athletes, athlete), current.groups)
+    } catch (error) {
+      return failure(error instanceof Error ? error.message : '运动员状态更新失败')
+    }
+  }
+
   private async commit(athletes: AthleteCatalog, groups: ReturnType<CatalogCacheRepository['load']>['groups']): Promise<ManagementResult> {
     try {
       const entry = this.options.cache.replaceFromServer(this.options.clubId, athletes, groups, this.now())

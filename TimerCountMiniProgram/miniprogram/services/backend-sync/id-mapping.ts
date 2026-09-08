@@ -109,12 +109,12 @@ export class SyncIdMapping {
   }
 
   // 签名保持旧启动同步兼容；Task 2 新目录服务只传 EntityKind（group/member）。
-  reserve(kind: LegacyEntityKind, values: number[]): void { this.legacy.reserve(kind, values) }
-  isRemote(kind: LegacyEntityKind, id: number): boolean { return this.legacy.isRemote(kind, id) }
-  get(kind: LegacyEntityKind, key: string): number | undefined { return this.legacy.get(kind, key) }
-  assign(kind: LegacyEntityKind, key: string): number { return this.legacy.assign(kind, key) }
-  bind(kind: LegacyEntityKind, key: string, id: number): void { this.legacy.bind(kind, key, id) }
-  rekey(kind: LegacyEntityKind, from: string, to: string): void { this.legacy.rekey(kind, from, to) }
+  reserve(kind: EntityKind, values: number[]): void { this.legacy.reserve(kind, values) }
+  isRemote(kind: EntityKind, id: number): boolean { return this.legacy.isRemote(kind, id) }
+  get(kind: EntityKind, key: string): number | undefined { return this.legacy.get(kind, key) }
+  assign(kind: EntityKind, key: string): number { return this.legacy.assign(kind, key) }
+  bind(kind: EntityKind, key: string, id: number): void { this.legacy.bind(kind, key, id) }
+  rekey(kind: EntityKind, from: string, to: string): void { this.legacy.rekey(kind, from, to) }
   save(): void { this.legacy.save() }
 }
 

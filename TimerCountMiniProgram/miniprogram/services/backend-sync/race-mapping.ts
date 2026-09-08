@@ -1,13 +1,13 @@
 import type { RaceRecord } from '../score-repository'
 import type { RaceBundleDto } from '../backend-api/race-bundles'
 import type { AthleteDto } from '../backend-api/athletes'
-import type { SyncIdMapping } from './id-mapping'
+import type { LegacySyncIdMapping } from './id-mapping'
 import { parseRaceDate } from './validation'
 
 export const joinKey = (raceId: string, athleteId: number) => JSON.stringify([raceId, athleteId])
 export const scoreKey = (raceId: string, index: number) => JSON.stringify([raceId, index])
 
-export function toRaceBundle(record: RaceRecord, clubId: number, ids: SyncIdMapping): RaceBundleDto {
+export function toRaceBundle(record: RaceRecord, clubId: number, ids: LegacySyncIdMapping): RaceBundleDto {
   // RaceID 仅当本地比赛已绑定云端 ID（此前添加成功过）时携带；
   // 首次上传不带 RaceID，由后端生成并在响应中返回，随后由 StartupSync 绑定回本地记录。
   const raceId = ids.get('race', record.id)

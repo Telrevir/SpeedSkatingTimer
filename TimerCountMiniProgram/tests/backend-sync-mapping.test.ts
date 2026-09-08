@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { SyncIdMapping } from '../miniprogram/services/backend-sync/id-mapping'
+import { LegacySyncIdMapping } from '../miniprogram/services/backend-sync/id-mapping'
 import { toRaceBundle, fromRaceBundle } from '../miniprogram/services/backend-sync/race-mapping'
 
 function storage() {
@@ -9,27 +9,27 @@ function storage() {
 
 test('stable IDs survive restart, avoid reserved IDs and isolate clubs', () => {
   const state = storage()
-  const first = new SyncIdMapping(state, 1, () => 1000, () => 0)
+  const first = new LegacySyncIdMapping(state, 1, () => 1000, () => 0)
   first.reserve('race', [1024000])
   const raceId = first.assign('race', 'local-a')
   const groupId = first.assign('group', 'local-group')
   assert.equal(raceId, 1024001)
   assert.ok(groupId > 0 && groupId <= 0x7fffffff)
   first.save()
-  const resumed = new SyncIdMapping(state, 1, () => 9000, () => 0.5)
+  const resumed = new LegacySyncIdMapping(state, 1, () => 9000, () => 0.5)
   assert.equal(resumed.assign('race', 'local-a'), raceId)
-  const other = new SyncIdMapping(state, 2, () => 9000, () => 0.5)
+  const other = new LegacySyncIdMapping(state, 2, () => 9000, () => 0.5)
   assert.notEqual(other.assign('race', 'local-a'), raceId)
   other.save()
-  assert.equal(new SyncIdMapping(state, 1).assign('race', 'local-a'), raceId)
+  assert.equal(new LegacySyncIdMapping(state, 1).assign('race', 'local-a'), raceId)
 })
 
 test('corrupt mappings and occupied bindings are never silently replaced', () => {
   const state = storage()
   state.value = { schemaVersion: 3 }
-  assert.throws(() => new SyncIdMapping(state, 1))
+  assert.throws(() => new LegacySyncIdMapping(state, 1))
   state.value = undefined
-  const ids = new SyncIdMapping(state, 1)
+  const ids = new LegacySyncIdMapping(state, 1)
   ids.bind('race', 'local-a', 50)
   assert.throws(() => ids.bind('race', 'local-a', 51))
   assert.throws(() => ids.bind('race', 'local-b', 50))
@@ -38,7 +38,7 @@ test('corrupt mappings and occupied bindings are never silently replaced', () =>
 
 test('race mapping omits RaceID on first upload and reuses the bound RaceID afterwards', () => {
   const state = storage()
-  const ids = new SyncIdMapping(state, 1, () => 1000, () => 0)
+  const ids = new LegacySyncIdMapping(state, 1, () => 1000, () => 0)
   const local = { id: 'local-race', startedAt: new Date(2026, 8, 3, 10).getTime(), finishedAt: null,
     scores: [{ athleteId: 7, name: '甲', epc: '0000000A', lap: 4, rawLap: 3, correctionOffset: 1, correctedLap: 4, lapCentiseconds: 6100, totalCentiseconds: 12300, rank: 2 }] }
   // 首次添加：RaceID 与 ClientRaceID 都不携带，由后端生成。
@@ -67,7 +67,7 @@ test('race mapping omits RaceID on first upload and reuses the bound RaceID afte
 })
 
 test('server history joins current athlete data and does not fabricate finish time', () => {
-  const ids = new SyncIdMapping(storage(), 1)
+  const ids = new LegacySyncIdMapping(storage(), 1)
   const bundle = toRaceBundle({ id: 'local', startedAt: new Date(2026, 8, 3, 10).getTime(), finishedAt: null,
     scores: [{ athleteId: 7, name: '旧姓名', epc: '00000001', lap: 2, lapCentiseconds: 3000, totalCentiseconds: 6000, rank: 1 }] }, 1, ids)
   const result = fromRaceBundle(bundle, [{ AthleteID: 7, ClubID: 1, AthleteName: '新姓名', AthleteEPC: 10, Enabled: true }], 'restored')

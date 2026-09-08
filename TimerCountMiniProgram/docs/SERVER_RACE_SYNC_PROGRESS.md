@@ -44,6 +44,16 @@
 - 新增联合缓存与管理服务测试；`npm run typecheck` 通过。完整 `npm test` 为 236/242 通过，剩余 6 项为既有 BLE UUID fixture 不匹配。
 
 
+## 已完成：Task 3（启动目录刷新与比赛唤醒）
+
+本次本地提交，未推送远端。
+
+- `StartupSync` 只并行协调目录缓存刷新与待处理比赛队列唤醒；不再使用 `SyncDataApi`、不上传本地目录、不下载或导入线上比赛历史。
+- 目录失败不会阻断待处理比赛唤醒，也不会影响 `app.ts` 的非阻塞启动和 BLE 自动连接。
+- 应用服务已注入 v2 目录缓存、目录刷新、运动员/分组管理服务、目录 ID 映射和比赛任务箱；网络比赛执行仍留给后续 Task 5。
+- `SyncIdMapping` 的新目录公开接口收窄为 `group/member`；遗留 race/join/score 映射仅作为旧存储兼容读取。
+- 新增三项启动边界测试。`npm run typecheck` 通过；完整 `npm test` 为 223/229 通过，剩余 6 项为既有 BLE UUID fixture 不匹配。
+
 
 ## 工作区保护
 
@@ -64,4 +74,4 @@
 
 ## 下一步
 
-本轮交接已完成。下一步按 `docs/superpowers/plans/2026-09-07-miniprogram-server-race-sync.md` 的顺序继续 **Task 3：启动编排与页面接入**；先构造并注入 `CatalogCacheSync`、两类管理服务及其 `mappingStorage`，再接入页面。不得覆盖上述工作区保护列表；不需要重做 Task 2 的缓存、管理服务或映射测试。
+按计划继续 **Task 5：Worker 调度器与桥接**；Task 3 已完成。不得覆盖上述工作区保护列表。

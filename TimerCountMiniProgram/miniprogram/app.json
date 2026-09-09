@@ -5,7 +5,8 @@
     "pages/ranking/index",
     "pages/athletes/index",
     "pages/scores/index",
-    "pages/logs/index"
+    "pages/logs/index",
+    "pages/live-races/index"
   ],
   "window": {
     "navigationBarTitleText": "轮滑计时",

@@ -1,0 +1,32 @@
+.page { padding: 28rpx 28rpx 48rpx; }
+.page-head { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin-bottom: 22rpx; }
+.page-title, .page-subtitle { display: block; }
+.page-title { color: #172033; font-size: 34rpx; font-weight: 700; }
+.page-subtitle { margin-top: 6rpx; color: #667085; font-size: 21rpx; }
+.history-link { flex-shrink: 0; padding: 14rpx 20rpx; border-radius: 12rpx; background: #eef4ff; color: #2457c5; font-size: 23rpx; }
+.status { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; margin-bottom: 20rpx; padding: 18rpx 22rpx; border-radius: 8rpx; background: #f2f4f7; color: #475467; font-size: 22rpx; }
+.status button { flex-shrink: 0; margin: 0; }
+.error-status { background: #fff1f0; color: #b42318; }
+.race-list { display: flex; flex-direction: column; gap: 20rpx; }
+.race-card { overflow: hidden; border-radius: 8rpx; background: #fff; box-shadow: 0 8rpx 24rpx rgba(23, 32, 51, .06); }
+.race-head { padding: 24rpx; }
+.head-active { background: #f5f8ff; }
+.race-title { display: flex; align-items: center; }
+.arrow { width: 34rpx; margin-right: 10rpx; color: #2563eb; font-size: 34rpx; text-align: center; }
+.race-number, .started-at { display: block; }
+.race-number { color: #172033; font-size: 28rpx; font-weight: 700; }
+.started-at { margin-top: 5rpx; color: #98a2b3; font-size: 20rpx; }
+.summary { display: grid; grid-template-columns: 1fr 80rpx minmax(150rpx, 1fr); gap: 18rpx; margin: 22rpx 0 0 44rpx; }
+.summary view { min-width: 0; }
+.summary-label, .summary-value { display: block; }
+.summary-label { color: #98a2b3; font-size: 18rpx; }
+.summary-value { overflow: hidden; margin-top: 5rpx; color: #344054; font-size: 23rpx; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.leader { color: #16724d; }
+.score-table { overflow-x: auto; border-top: 1rpx solid #e7ecf3; }
+.score-row { display: grid; grid-template-columns: minmax(150rpx, 1fr) 70rpx 130rpx 145rpx 65rpx; align-items: center; min-width: 650rpx; min-height: 72rpx; padding: 0 20rpx; border-top: 1rpx solid #f2f4f7; color: #475467; font-size: 21rpx; }
+.score-header { background: #f8fafc; color: #667085; font-weight: 600; }
+.score-name { overflow: hidden; color: #172033; text-overflow: ellipsis; white-space: nowrap; }
+.rank { color: #2563eb; font-weight: 700; }
+.empty-inline { padding: 30rpx; color: #98a2b3; font-size: 22rpx; text-align: center; }
+.empty { padding: 80rpx 32rpx; border-radius: 8rpx; background: #fff; color: #667085; text-align: center; }
+.empty-title { display: block; margin-bottom: 14rpx; color: #172033; font-size: 30rpx; font-weight: 700; }

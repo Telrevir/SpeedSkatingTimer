@@ -61,6 +61,7 @@
 .state-waiting { background: #d4930d; }
 .state-running { background: #16875b; }
 .state-finished { background: #d13f4c; }
+.live-races-link { margin-top: 18rpx; padding: 18rpx 24rpx; border-radius: 12rpx; background: #eef4ff; color: #2457c5; font-size: 24rpx; font-weight: 600; text-align: center; }
 
 .group-card {
   display: flex;

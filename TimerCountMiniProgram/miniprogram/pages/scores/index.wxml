@@ -1,4 +1,16 @@
 <view class="page">
+  <view class="history-toolbar">
+    <view>
+      <text class="history-title">比赛记录</text>
+      <text class="history-count">按时间从新到旧 · 共 {{total}} 场</text>
+    </view>
+    <navigator class="live-link" url="/pages/live-races/index">当前比赛</navigator>
+  </view>
+  <view wx:if="{{errorMessage}}" class="load-state error-state">
+    <text>{{errorMessage}}</text>
+    <button size="mini" disabled="{{loading}}" bindtap="retry">重试</button>
+  </view>
+  <view wx:elif="{{loading && !races.length}}" class="load-state">正在加载比赛记录…</view>
   <view wx:if="{{races.length}}" class="race-list">
     <view class="race-card" wx:for="{{races}}" wx:for-item="race" wx:key="id">
       <view class="race-head" data-id="{{race.id}}" bindtap="toggleRace" hover-class="tree-head-active">
@@ -35,5 +47,10 @@
       </view>
     </view>
   </view>
-  <view wx:else class="empty"><text class="title">暂无本地成绩</text><text>开始比赛后，小程序会在本机保存逐圈记录。</text></view>
+  <view wx:elif="{{!loading}}" class="empty"><text class="title">暂无比赛记录</text><text>服务器记录与尚未上传的离线比赛会显示在这里。</text></view>
+  <view class="pager">
+    <button size="mini" disabled="{{loading || !hasPrevious}}" bindtap="previousPage">上一页</button>
+    <text>第 {{page}} 页</text>
+    <button size="mini" disabled="{{loading || !hasNext}}" bindtap="nextPage">下一页</button>
+  </view>
 </view>

@@ -1,15 +1,17 @@
 <view class="page">
-  <view class="storage-warning">运动员名单保存在本机。清理微信存储、删除小程序数据或更换手机可能导致名单丢失。</view>
+  <view class="storage-warning {{backendAvailable ? 'storage-online' : 'storage-offline'}}">
+    {{backendAvailable ? '名单已与服务器连接，修改将在服务器确认后生效。' : (backendMessage || '正在连接服务器，已缓存名单仍可查看和参赛。')}}
+  </view>
 
   <view class="toolbar">
     <text class="form-title">{{editingId ? '编辑运动员 #' + editingId : '新建运动员'}}</text>
-    <input class="form-input" value="{{formName}}" maxlength="32" placeholder="运动员姓名" bindinput="updateName" disabled="{{!managementEnabled || busy}}" />
-    <input class="form-input" value="{{formEpc}}" maxlength="8" placeholder="8 位 EPC，例如 A1B2C3D4" bindinput="updateEpc" disabled="{{!managementEnabled || busy}}" />
+    <input class="form-input" value="{{formName}}" maxlength="32" placeholder="运动员姓名" bindinput="updateName" disabled="{{!managementEnabled || !backendAvailable || busy}}" />
+    <input class="form-input" value="{{formEpc}}" maxlength="8" placeholder="8 位 EPC，例如 A1B2C3D4" bindinput="updateEpc" disabled="{{!managementEnabled || !backendAvailable || busy}}" />
     <view class="form-actions">
       <button wx:if="{{editingId}}" class="secondary" size="mini" disabled="{{busy}}" bindtap="cancelEdit">取消</button>
-      <button class="primary" size="mini" loading="{{busy}}" disabled="{{!managementEnabled || busy}}" bindtap="saveAthlete">{{editingId ? '保存修改' : '添加运动员'}}</button>
+      <button class="primary" size="mini" loading="{{busy}}" disabled="{{!managementEnabled || !backendAvailable || busy}}" bindtap="saveAthlete">{{editingId ? '保存修改' : '添加运动员'}}</button>
     </view>
-    <button class="group-manage" size="mini" disabled="{{!managementEnabled || busy}}" bindtap="manageGroups">分组管理</button>
+    <button class="group-manage" size="mini" disabled="{{!managementEnabled || !backendAvailable || busy}}" bindtap="manageGroups">分组管理</button>
   </view>
 
   <view wx:if="{{groups.length}}" class="group-list">
@@ -26,8 +28,8 @@
       <text>{{item.lap}} 圈</text>
       <text>{{item.totalTime}}</text>
       <view class="row-actions">
-        <button class="edit" size="mini" data-id="{{item.id}}" disabled="{{!managementEnabled || busy}}" bindtap="editAthlete">编辑</button>
-        <button class="delete" size="mini" data-id="{{item.id}}" disabled="{{!managementEnabled || busy}}" bindtap="archiveAthlete">归档</button>
+        <button class="edit" size="mini" data-id="{{item.id}}" disabled="{{!managementEnabled || !backendAvailable || busy}}" bindtap="editAthlete">编辑</button>
+        <button class="delete" size="mini" data-id="{{item.id}}" disabled="{{!managementEnabled || !backendAvailable || busy}}" bindtap="archiveAthlete">归档</button>
       </view>
     </view>
   </view>
@@ -42,8 +44,8 @@
           <text class="athlete-epc">{{item.epc}}</text>
         </view>
         <view class="row-actions">
-          <button class="edit" size="mini" data-id="{{item.id}}" disabled="{{!managementEnabled || busy}}" bindtap="editAthlete">编辑</button>
-          <button class="restore" size="mini" data-id="{{item.id}}" disabled="{{!managementEnabled || busy}}" bindtap="restoreAthlete">恢复</button>
+          <button class="edit" size="mini" data-id="{{item.id}}" disabled="{{!managementEnabled || !backendAvailable || busy}}" bindtap="editAthlete">编辑</button>
+          <button class="restore" size="mini" data-id="{{item.id}}" disabled="{{!managementEnabled || !backendAvailable || busy}}" bindtap="restoreAthlete">恢复</button>
         </view>
       </view>
     </block>
@@ -53,18 +55,18 @@
   <view wx:if="{{groupModalVisible}}" class="modal-mask">
     <view class="group-modal">
       <text class="modal-title">{{editingGroupId ? '编辑分组' : '新建分组'}}</text>
-      <input class="form-input" value="{{groupFormName}}" placeholder="分组名称" bindinput="updateGroupName" />
-      <input class="form-input" value="{{groupSearch}}" placeholder="搜索姓名、EPC或ID" bindinput="updateGroupSearch" />
+      <input class="form-input" value="{{groupFormName}}" placeholder="分组名称" bindinput="updateGroupName" disabled="{{busy || !backendAvailable}}" />
+      <input class="form-input" value="{{groupSearch}}" placeholder="搜索姓名、EPC或ID" bindinput="updateGroupSearch" disabled="{{busy || !backendAvailable}}" />
       <scroll-view scroll-y class="group-candidates">
         <view wx:for="{{groupCandidates}}" wx:key="id" class="candidate-row" data-id="{{item.id}}" bindtap="toggleGroupMember">
-          <checkbox checked="{{item.selected}}" />
+          <checkbox checked="{{item.selected}}" disabled="{{busy || !backendAvailable}}" />
           <text>{{item.name}}（{{item.id}}）</text>
         </view>
       </scroll-view>
       <view class="modal-actions">
-        <button size="mini" bindtap="closeGroupEditor">取消</button>
-        <button wx:if="{{editingGroupId}}" size="mini" class="danger" bindtap="deleteGroup">删除</button>
-        <button size="mini" class="primary" bindtap="saveGroup">保存</button>
+        <button size="mini" disabled="{{busy}}" bindtap="closeGroupEditor">取消</button>
+        <button wx:if="{{editingGroupId}}" size="mini" class="danger" loading="{{busy}}" disabled="{{busy || !backendAvailable}}" bindtap="deleteGroup">删除</button>
+        <button size="mini" class="primary" loading="{{busy}}" disabled="{{busy || !backendAvailable}}" bindtap="saveGroup">保存</button>
       </view>
     </view>
   </view>

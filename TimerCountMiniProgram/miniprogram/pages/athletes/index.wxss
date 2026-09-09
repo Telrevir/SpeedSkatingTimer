@@ -1,5 +1,7 @@
 .page { padding: 28rpx; }
 .storage-warning { margin-bottom: 20rpx; padding: 20rpx 24rpx; border-radius: 18rpx; background: #fff7e6; color: #9a6700; font-size: 22rpx; line-height: 1.55; }
+.storage-online { background: #ecfdf3; color: #067647; }
+.storage-offline { background: #fff7e6; color: #9a6700; }
 .toolbar { display: flex; flex-direction: column; gap: 16rpx; padding: 24rpx; border-radius: 24rpx; background: #fff; }
 .form-title { color: #172033; font-size: 28rpx; font-weight: 700; }
 .form-input { box-sizing: border-box; width: 100%; height: 78rpx; padding: 0 22rpx; border: 1rpx solid #d0d5dd; border-radius: 14rpx; color: #172033; font-size: 26rpx; }

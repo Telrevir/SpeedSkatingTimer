@@ -1,4 +1,12 @@
 .page { padding: 28rpx; }
+.history-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin-bottom: 20rpx; }
+.history-title, .history-count { display: block; }
+.history-title { color: #172033; font-size: 32rpx; font-weight: 700; }
+.history-count { margin-top: 6rpx; color: #667085; font-size: 21rpx; }
+.live-link { flex-shrink: 0; padding: 14rpx 20rpx; border-radius: 12rpx; background: #eef4ff; color: #2457c5; font-size: 23rpx; }
+.load-state { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; margin-bottom: 20rpx; padding: 18rpx 22rpx; border-radius: 8rpx; background: #f2f4f7; color: #475467; font-size: 22rpx; }
+.load-state button { flex-shrink: 0; margin: 0; }
+.error-state { background: #fff1f0; color: #b42318; }
 .empty { padding: 80rpx 32rpx; border-radius: 24rpx; background: #fff; color: #667085; text-align: center; }
 .title { display: block; margin-bottom: 18rpx; color: #172033; font-size: 34rpx; font-weight: 700; }
 .race-list { display: flex; flex-direction: column; gap: 24rpx; }
@@ -31,3 +39,5 @@
 .score-name { overflow: hidden; color: #172033; text-overflow: ellipsis; white-space: nowrap; }
 .score-rank { color: #2f6fed; font-weight: 700; }
 .race-empty { padding: 28rpx 0 6rpx; color: #98a2b3; font-size: 22rpx; text-align: center; }
+.pager { display: grid; grid-template-columns: 150rpx 1fr 150rpx; align-items: center; gap: 16rpx; margin-top: 24rpx; color: #667085; font-size: 22rpx; text-align: center; }
+.pager button { width: 150rpx; margin: 0; }

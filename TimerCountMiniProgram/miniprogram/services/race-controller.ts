@@ -22,6 +22,7 @@ import type { AthleteCatalogService } from './athlete-catalog-service'
 import type { ActiveRaceSessionRepository } from './active-race-session-repository'
 import { EpcDefinitionQueue } from './epc-definition-queue'
 import type { ScoreRepository } from './score-repository'
+import type { RaceSyncService } from './race-sync-service'
 
 export interface RaceTransport {
   connect(): Promise<void>
@@ -71,6 +72,7 @@ export class RaceController {
     private readonly groupStore?: GroupStore,
     private readonly activeSessionRepository?: ActiveRaceSessionRepository,
     private readonly protocolLog?: ProtocolPacketLogger,
+    private readonly raceSyncService?: RaceSyncService,
   ) {
     this.definitionQueue = activeSessionRepository
       ? new EpcDefinitionQueue(activeSessionRepository, async (definition) => {
@@ -180,6 +182,7 @@ export class RaceController {
     if (participantIds.length > 50) throw new Error('每场比赛最多选择 50 名运动员')
 
     await this.sendAcknowledgedCommand(CommandId.StartDetection, undefined, () => {
+      const raceIdentity = this.raceSyncService?.begin(participantIds, Date.now())
       this.activeSessionRepository?.save({
         participantIds,
         activeGroupId: activeGroup?.id ?? null,
@@ -188,10 +191,11 @@ export class RaceController {
         lapCorrectionStates: [],
         localPhase: 'running',
         finishLap: null,
+        ...(raceIdentity === undefined ? {} : { raceIdentity }),
       })
       this.scoring.start(participantIds)
       this.raceHistoryFinished = false
-      this.scoreRepository?.beginRace()
+      if (!this.raceSyncService) this.scoreRepository?.beginRace()
       this.raceStore.setFirmwareState(FirmwareDetectionState.Detecting)
       this.syncViews()
     })
@@ -493,7 +497,7 @@ export class RaceController {
 
     this.persistRaceProgress()
     this.syncViews()
-    this.scoreRepository?.appendScore({
+    const localScore = {
       athleteId: profile.id,
       name: profile.name,
       epc: profile.epc,
@@ -504,7 +508,11 @@ export class RaceController {
       lapCentiseconds: score.lapCentiseconds,
       totalCentiseconds: score.totalCentiseconds,
       rank: score.currentRank,
-    }, this.raceStore.snapshot.athleteTransferState === 'receiving')
+    }
+    const historical = this.raceStore.snapshot.athleteTransferState === 'receiving'
+    const localId = session.raceIdentity?.localId
+    if (this.raceSyncService && localId && !historical) this.raceSyncService.recordScore(localId, localScore, false)
+    else this.scoreRepository?.appendScore(localScore, historical)
     this.finishHistoryIfNeeded()
   }
 
@@ -570,7 +578,9 @@ export class RaceController {
 
   private finishHistoryIfNeeded(): void {
     if (this.scoring.phase !== 'finished' || this.raceHistoryFinished) return
-    this.scoreRepository?.finishRace()
+    const localId = this.activeSessionRepository?.load()?.raceIdentity?.localId
+    if (this.raceSyncService && localId) this.raceSyncService.finish(localId)
+    else this.scoreRepository?.finishRace()
     this.raceHistoryFinished = true
   }
 

@@ -49,11 +49,11 @@ export class ScoreRepository {
     this.sequence = nextSequence(this.records)
   }
 
-  beginRace(participantIds?: number[]): RaceWorkingCopy {
+  beginRace(participantIds?: number[], startedAt: number = this.now()): RaceWorkingCopy {
     if (this.currentId !== null) {
       return cloneRace(this.records.find(({ localId }) => localId === this.currentId)!)
     }
-    const timestamp = this.now()
+    const timestamp = startedAt
     let id = `race-${timestamp}-${this.sequence++}`
     while (this.records.some((record) => record.localId === id)) {
       id = `race-${timestamp}-${this.sequence++}`
@@ -92,11 +92,11 @@ export class ScoreRepository {
     return { ...identity }
   }
 
-  finishRace(): void {
-    if (this.currentId === null) return
-    const current = this.records.find(({ localId }) => localId === this.currentId)
+  finishRace(localId: string | null = this.currentId): void {
+    if (localId === null) return
+    const current = this.records.find((record) => record.localId === localId)
     if (current) current.finishedAt = this.now()
-    this.currentId = null
+    if (this.currentId === localId) this.currentId = null
     this.persist()
   }
 
@@ -107,6 +107,56 @@ export class ScoreRepository {
 
   markRaceOffline(localId: string): RaceWorkingCopy {
     return this.updateRaceIdentity(localId, { raceId: null, syncState: 'offline' })
+  }
+
+  bindScoreOnline(localScoreId: string, scoreId: number): void {
+    if (!Number.isInteger(scoreId) || scoreId <= 0) throw new Error('服务器成绩 ID 必须是正整数')
+    const record = this.records.find((item) => item.scores.some((score) => score.localScoreId === localScoreId))
+    if (!record) throw new Error('找不到待绑定的本地成绩')
+    const score = record.scores.find((item) => item.localScoreId === localScoreId)!
+    score.scoreId = scoreId
+    this.persist()
+  }
+
+  /**
+   * 完成包回执必须一次性确认整场比赛：先在内存副本中验证所有映射，
+   * 再用一次存储写入移除已完成工作副本。任何校验或写入失败都不改内存。
+   */
+  applyFinishedBundleReceipt(
+    localId: string,
+    raceId: number,
+    receipts: readonly { clientScoreKey: string; scoreId: number; raceId: number }[],
+  ): boolean {
+    const record = this.records.find((item) => item.localId === localId)
+    if (!record || record.finishedAt === null || !isPositiveInteger(raceId)) return false
+    if (record.raceId !== null && record.raceId !== raceId) return false
+    if (receipts.length !== record.scores.length) return false
+
+    const localByKey = new Map(record.scores.map((score) => [score.clientScoreKey, score]))
+    const receiptKeys = receipts.map((receipt) => receipt.clientScoreKey)
+    if (!unique(receiptKeys) || receiptKeys.some((key) => !localByKey.has(key))) return false
+    if (receipts.some((receipt) => !isPositiveInteger(receipt.scoreId) || receipt.raceId !== raceId)) return false
+    if (record.scores.some((score) => score.scoreId !== null
+      && receipts.find((receipt) => receipt.clientScoreKey === score.clientScoreKey)?.scoreId !== score.scoreId)) return false
+
+    // 成功回执的最终状态是“已落库且可删除”，故不写入任何中间 online 版本。
+    const nextRecords = this.records.filter((item) => item.localId !== localId).map(cloneRace)
+    const nextCurrentId = this.currentId === localId ? null : this.currentId
+    const stored: StoredScoreRecordsV2 = {
+      schemaVersion: 2,
+      currentLocalId: nextCurrentId,
+      records: nextRecords,
+    }
+    try {
+      this.storage.write(stored)
+    } catch {
+      return false
+    }
+    this.records = stored.records.map(cloneRace)
+    this.currentId = stored.currentLocalId
+    const snapshot = this.listRaces()
+    this.listeners.forEach((listener) => listener(snapshot))
+    return true
   }
 
   getWorkingCopy(localId: string): RaceWorkingCopy | null {

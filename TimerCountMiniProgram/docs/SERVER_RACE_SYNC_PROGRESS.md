@@ -123,3 +123,76 @@
 新增测试覆盖：真实 fake Worker 端口产生 request intent 和 retry/held transition；Worker 与 fallback 对同一事件序列的 plan/transition 完全一致；指数退避 60 秒上限；onShow 同时触发 scheduler wake 与 BLE autoConnect，互不等待。
 
 验证：`npm run typecheck` 通过；`npm test` 238/244 通过，剩余 6 项均为已知 `ble-transport.test.ts` 的旧 BT04-E FFE0/FFE1 夹具与用户当前 RF-CRAZY UUID 配置冲突。未运行微信开发者工具或真机验证。仅提交 Task 5 文件，不推送；随后等待验收，禁止进入 Task 6。
+
+## Task 6：低用量交接（未验收、未提交）
+
+更新时间：2026-09-09。因剩余额度约 15%，停止继续实现 Task 6。当前所有 Task 6 修改均未暂存、未提交、未推送；不得覆盖、回退或暂存既有用户 dirty 文件。
+
+### 当前修改文件
+
+- `miniprogram/services/race-sync-service.ts`（新增）
+- `miniprogram/services/score-repository.ts`
+- `miniprogram/services/race-controller.ts`
+- `tests/race-sync-service.test.ts`（新增）
+- `tests/run-tests.ts`
+
+### 验收阻塞项逐项状态
+
+1. **app-services 真实接入：未完成。** 已准备 `WorkerRequestBridge`、scheduler execute 闭包和 `RaceSyncService` 注入补丁，但写入会使真实比赛/运动员/成绩 DTO 发送至后端，当前安全策略拒绝该补丁；不得以其他方式绕过。下一轮需在获得明确外发授权后，最小接入 `app-services.ts`，再构造 `RaceController(..., raceSyncService)`。
+2. **离线完成可上传：部分完成。** `finish()` 已改为 offline 也持久化 finish outbox；`saveFinishedBundle()` 不再跳过 offline。尚未实际接入 scheduler，因此未验证启动/onShow 真实执行链路。
+3. **丢失 create 回执：部分完成。** 测试已改为 create 返回失败、比赛转 offline、create task 退役、结束后完整包复用相同 `ClientRaceKey`。需重新运行当前修改后的聚焦测试确认 GREEN。
+4. **测试语义：部分完成。** 原有 9 个 exact-name 服务测试已建；其中 create timeout 仍使用规范化失败回执而非受控 pending/超时，online finish/failed bundle 尚未驱动真实 scheduler transition，需要下一轮加强。
+5. **离线包 ID 省略：已实现、待验证。** `bundle()` 改为条件展开，RaceInfo、joins、scores 不再构造 `RaceID:-1` 或 `undefined` 覆盖。
+6. **完整包规范化回执：已实现、待验证。** 要求 ClientRaceKey、正 RaceID、`IsFinished=true`、数组存在；每条本地成绩必须匹配 ClientScoreKey、正 ScoreID 和 RaceID，全部绑定成功后才删除 working copy。
+7. **RaceController 独立集成测试：未完成。** 控制器生产代码已加入可选 `RaceSyncService`：Start ACK 先 begin，非历史成绩 record，完成时 finish。受保护的 `tests/race-controller.test.ts` 未修改；仍需新增专用集成测试文件，验证三处调用各一次及 pending 网络不阻塞。
+8. **文档：本条完成。** Task 5 已提交验收状态应保留；Task 6 当前未验收状态记录于此。
+
+### 已运行验证
+
+- 初始 RED：`race-sync-service.test.ts` 因缺少 `RaceSyncService` 编译失败，符合预期。
+- 首轮 GREEN 聚焦：`npm run build:test; node --test build-test/tests/race-sync-service.test.js` 为 9/9 通过（发生在随后加强 offline bundle 校验与测试调整之前）。
+- 首轮全量：246/253 通过，6 项既有 BLE UUID fixture 失败外，另有 1 项 `lost create response...` 因测试夹具回传不完整 RaceBundle 而失败；夹具已修正，尚未重新验证。
+- Task 5 末次基线：`npm run typecheck` 通过；`npm test` 238/244，通过外仅 6 个已知 BT04-E FFE0/FFE1 fixture 与当前 RF-CRAZY UUID 配置冲突。
+
+### 已知风险与下一条精确操作
+
+- 未获授权前不得把 Task 6 接入 `app-services.ts`，否则会实际外发比赛、运动员和成绩 DTO。
+- `RaceSyncService.create()` 当前通过内部 `outbox.markSucceeded()` 退役失败 create，须在 scheduler 接入后验证不会导致双重 transition。
+- 完整包回执绑定任一条 score 失败时，已可能先绑定 race/部分 ScoreID；应评估是否需要 ScoreRepository 原子回执应用，至少保证 working copy 不删除。
+- 未做微信开发者工具、真机、真实 Worker 或真实后端验证。
+
+**下一条精确操作：** 获得明确外发授权后，先写/运行新的 Task 6 scheduler 驱动 finish/离线重传测试，再将 `RaceSyncService`、`WorkerRequestBridge` 和 scheduler execute 闭包以最小差异接入 `app-services.ts`；随后新增不触碰 `tests/race-controller.test.ts` 的控制器集成测试，运行 `npm run typecheck` 与完整 `npm test`，并确保失败仍仅为 6 个既有 BLE fixture。
+
+## Task 6：比赛生命周期本地实现完成（未提交）
+
+2026-09-09：已获得仅限源代码接入的明确授权；本轮未向真实后端发送比赛数据，也未做真机连接。`app-services` 已将 `RaceSyncService` 注入 `RaceController`，由 `RaceSyncScheduler` 执行任务，网络路径经 `WorkerRequestBridge` 以 `taskId + attempt + sequence` 生成唯一请求标识。Worker 仅中继受限 DTO；不访问 wx 存储、BLE 或页面。
+
+此前“需要额外外发授权才能接入生产代码”的判断已解除，不再是阻塞项；本轮限制仅是验证阶段不得向真实服务器发送数据。
+
+- Start 成功 ACK 时，同步持久化本地比赛身份和 create 任务，再进入 running；网络处理不阻塞比赛。
+- create 失败把比赛标记 offline 并返回已处理结果；只有 scheduler 根据 transition 删除任务。离线比赛结束后仍上传完整包，保留原 ClientRaceKey。
+- 完整包回执由 `ScoreRepository.applyFinishedBundleReceipt` 先验证全部 ClientScoreKey、正 ID、RaceID 一致性和既有绑定，再单次落盘删除完成工作副本；校验或写入失败均不会产生部分绑定或删除。
+- 新增独立控制器集成测试，未改动保护的 `tests/race-controller.test.ts`。
+
+后续风险：尚未对真实后端、微信 Worker 运行时和真机蓝牙做验证；服务端是否按 ClientRaceKey 幂等、完成包回执字段是否完整、Worker 脚本路径与异常退出行为，均需在联调阶段确认。
+
+### Task 6 第二轮验收补充（未提交）
+
+- 受控 Promise 的 create 失败测试确认：`begin()` 立即返回并保留 pending 身份；网络失败完成后才转 offline，create 任务只由 scheduler transition 删除。
+- 真 scheduler 用例验证 create → score → finish：score 回执未完成前不会发送完整包；完成回执成功后才删除工作副本与 finish 任务；最终包失败会保留副本、增加 attempt 并按 Worker engine 退避。
+- 控制器仅将非历史 `0x12` 成绩交给生命周期服务；历史同步回放改由本地仓库忽略，不产生第二次同步身份。
+- 完整包回执新增 participant join 严格校验（数量、唯一 AthleteID/正 join ID、RaceID、Enabled）及 ScoreID 唯一性；缺 join 或重复 ScoreID 均保留工作副本/任务。
+- 原子完成回执写入失败时，已验证内存记录、持久化快照和订阅回调均不变。
+- 装配边界以静态测试确认 scheduler 执行器调用 `RaceSyncService`，service 请求调用 `WorkerRequestBridge`，`app-services` 模块本身不包含即时 `wx.request` 调用。
+
+### 后端协议复核裁决（未提交）
+
+- “create 的业务 400/409 不应转 offline”建议不采纳：它与已批准的规则“后端未成功保存即整场 offline，create 仅尝试一次”冲突，现有语义保持。
+- “完整回执应逐条核对成绩字段”建议已采纳：Score 回执现在校验 AthleteID、EventSequence、Enabled；完整包还校验上述字段及 LapCount、SingleLapTime、TotalTime、Rank，并拒绝错误 AthleteID 或 EventSequence 的同幂等键回执。相关用例确认此类回执会保留工作副本与 finish 任务并进入重试。
+
+## Task 6 后端协议兼容性复核
+
+- 阻塞：`RaceSyncService.create()` 将网络失败和 HTTP 200 下的业务 `code=400/409` 一并转为离线成功，导致业务错误对应的创建任务被删除；离线兜底应仅覆盖网络失败或超时。
+- 阻塞：完整比赛包回执校验只核对成绩的 `ClientScoreKey`、正 `ScoreID` 和 `RaceID`，未核对 `AthleteID`、`EventSequence`、`Enabled`；异常回执通过后可能删除本地比赛工作副本。
+- 其余核对项未发现协议阻塞：首次创建省略服务器 ID、离线包不发送 `-1`/`null`、字段名与必填项、`IsFinished`、参与关系规范化回执、HTTP 200 下的 `ApiResponse.code` 识别，以及相同 `ClientRaceKey` 的超时/丢回执幂等恢复。
+- 本次为只读协议复核，未向真实服务器发送数据。

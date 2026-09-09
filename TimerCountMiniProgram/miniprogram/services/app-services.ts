@@ -19,9 +19,12 @@ import { CatalogCacheRepository } from './catalog-cache-repository'
 import { RaceOutboxRepository } from './race-outbox-repository'
 import { RaceSyncScheduler } from './backend-sync/race-sync-scheduler'
 import { createWechatEnginePort } from './backend-sync/race-sync-engine-port'
+import { WorkerRequestBridge } from './backend-sync/worker-request-bridge'
+import { RaceSyncService } from './race-sync-service'
 import { AthleteManagementService } from './athlete-management-service'
 import { GroupManagementService } from './group-management-service'
 import { backendClient } from './backend-api/request'
+import type { ApiResult } from './backend-api/request'
 import { BACKEND_CONFIG } from './backend-api/config'
 
 const bluetoothApi = new WechatBluetoothApiAdapter()
@@ -39,7 +42,30 @@ export const mappingStorage = {
   write: (value: unknown) => wx.setStorageSync('timer_count_backend_sync_ids_v1', value),
 }
 export const raceOutboxRepository = new RaceOutboxRepository(new WechatRaceOutboxStorage())
-export const raceController = new RaceController(bleTransport, athleteCatalog, scoreRepository, groupStore, activeRaceSessionRepository, protocolLog)
+const workerRequestBridge = new WorkerRequestBridge(backendClient)
+let requestSequence = 0
+export const raceSyncScheduler: RaceSyncScheduler = new RaceSyncScheduler({
+  outbox: raceOutboxRepository,
+  enginePort: createWechatEnginePort(),
+  execute: (task): Promise<ApiResult<unknown>> => raceSyncService.execute(task),
+})
+export const raceSyncService: RaceSyncService = new RaceSyncService({
+  scoreRepository,
+  outbox: raceOutboxRepository,
+  scheduler: raceSyncScheduler,
+  client: backendClient,
+  clubId: BACKEND_CONFIG.clubId,
+  request: (endpoint, payload, task) => workerRequestBridge.request({
+    type: 'request',
+    requestId: `race:${task.taskId}:${task.attempt}:${++requestSequence}`,
+    taskId: task.taskId,
+    endpoint,
+    payload,
+  }),
+})
+export const raceController = new RaceController(
+  bleTransport, athleteCatalog, scoreRepository, groupStore, activeRaceSessionRepository, protocolLog, raceSyncService,
+)
 export const catalogSync = new CatalogCacheSync({
   clubId: BACKEND_CONFIG.clubId, cache: catalogCacheRepository, athleteCatalog, groupStore,
   client: backendClient, mappingStorage,
@@ -50,10 +76,5 @@ export const athleteManagement = new AthleteManagementService({
 export const groupManagement = new GroupManagementService({
   clubId: BACKEND_CONFIG.clubId, cache: catalogCacheRepository, athleteCatalog, groupStore,
   client: backendClient, mappingStorage,
-})
-export const raceSyncScheduler = new RaceSyncScheduler({
-  outbox: raceOutboxRepository,
-  enginePort: createWechatEnginePort(),
-  // Task 6 注入比赛 DTO 执行器前，wake 只恢复调度器，不执行或改写既有任务。
 })
 export const startupSync = new StartupSync({ catalogRefresher: catalogSync, wakePendingRaces: () => raceSyncScheduler.wake() })

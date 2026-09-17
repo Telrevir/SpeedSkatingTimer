@@ -114,5 +114,66 @@ int main() {
   assert(rssiLap.athlete.lapCentiseconds == 812);
   assert(rssiLap.athlete.totalCentiseconds == 812);
 
+  // 有效过线将当时的圈数、名次和总用时写入近10圈固定历史。
+  DetectionController rankedController;
+  assert(rankedController.start(0) == DetectResult::Accepted);
+  assert(rankedController.defineEpc(true, 0x66666666UL, 6, 0, info) ==
+         DefineResult::AthleteDefined);
+  assert(rankedController.defineEpc(true, 0x77777777UL, 7, 0, info) ==
+         DefineResult::AthleteDefined);
+  assert(rankedController.evaluateEpc(0x66666666UL, 8000).type ==
+         EpcEventType::Athlete);
+  assert(rankedController.evaluateEpc(0x77777777UL, 8000).type ==
+         EpcEventType::Athlete);
+  assert(rankedController.evaluateEpc(0x77777777UL, 16000).type ==
+         EpcEventType::Athlete);
+  assert(rankedController.evaluateEpc(0x66666666UL, 16000).type ==
+         EpcEventType::Athlete);
+
+  size_t athleteSixSlot = rankedController.athleteSlotCount();
+  size_t athleteSevenSlot = rankedController.athleteSlotCount();
+  for (size_t slot = 0; slot < rankedController.athleteSlotCount(); ++slot) {
+    if (!rankedController.athleteAt(slot, info)) continue;
+    if (info.id == 6) athleteSixSlot = slot;
+    if (info.id == 7) athleteSevenSlot = slot;
+  }
+  assert(athleteSixSlot < rankedController.athleteSlotCount());
+  assert(athleteSevenSlot < rankedController.athleteSlotCount());
+  AthleteLapHistoryRecord history{};
+  assert(rankedController.athleteHistoryCount(athleteSixSlot) == 2);
+  assert(rankedController.athleteHistoryAt(athleteSixSlot, 0, history));
+  assert(history.lapCount == 1 && history.rank == 1);
+  assert(history.totalCentiseconds == 800);
+  assert(rankedController.athleteHistoryAt(athleteSixSlot, 1, history));
+  assert(history.lapCount == 2 && history.rank == 2);
+  assert(history.totalCentiseconds == 1600);
+  assert(rankedController.athleteHistoryCount(athleteSevenSlot) == 2);
+  assert(rankedController.athleteHistoryAt(athleteSevenSlot, 0, history));
+  assert(history.lapCount == 1 && history.rank == 2);
+  assert(rankedController.athleteHistoryAt(athleteSevenSlot, 1, history));
+  assert(history.lapCount == 2 && history.rank == 1);
+
+  // 第11次有效过线覆盖最早记录，读取顺序始终为最早到最新。
+  DetectionController ringController;
+  assert(ringController.start(0) == DetectResult::Accepted);
+  assert(ringController.defineEpc(true, 0x88888888UL, 8, 0, info) ==
+         DefineResult::AthleteDefined);
+  for (uint32_t lap = 1; lap <= 11; ++lap) {
+    assert(ringController.evaluateEpc(0x88888888UL, lap * 8000UL).type ==
+           EpcEventType::Athlete);
+  }
+  assert(ringController.evaluateEpc(0x88888888UL, 88001).type ==
+         EpcEventType::Ignored);
+  assert(ringController.athleteHistoryCount(0) == 10);
+  assert(ringController.athleteHistoryAt(0, 0, history));
+  assert(history.lapCount == 2 && history.rank == 1);
+  assert(history.totalCentiseconds == 1600);
+  assert(ringController.athleteHistoryAt(0, 9, history));
+  assert(history.lapCount == 11 && history.rank == 1);
+  assert(history.totalCentiseconds == 8800);
+  assert(ringController.stop() == DetectResult::Accepted);
+  assert(ringController.start(100000) == DetectResult::Accepted);
+  assert(ringController.athleteHistoryCount(0) == 0);
+
   return 0;
 }

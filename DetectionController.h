@@ -31,6 +31,12 @@ struct AthleteInfo {
   uint32_t totalCentiseconds;
 };
 
+struct AthleteLapHistoryRecord {
+  uint16_t lapCount;
+  uint16_t rank;
+  uint32_t totalCentiseconds;
+};
+
 struct EpcEvent {
   EpcEventType type;
   AthleteInfo athlete;
@@ -40,6 +46,8 @@ class DetectionController {
 private:
   static constexpr size_t LIST_CAPACITY = 50;
   static constexpr uint32_t DUPLICATE_INTERVAL_MS = 8000UL;
+  static constexpr uint8_t LAP_HISTORY_CAPACITY = 10;
+  static constexpr uint8_t LAP_HISTORY_RECORD_SIZE = 7;
   static constexpr uint32_t MAX_CENTISECONDS = 0xFFFFFFUL;
 
   struct AthleteEntry {
@@ -48,6 +56,7 @@ private:
     uint32_t epc;
     uint32_t lastDetectedMs;
     bool hasDetectionTime;
+    uint32_t lastScoredOrder;
   };
 
   struct AthleteScoreEntry {
@@ -56,6 +65,9 @@ private:
     uint8_t lapCount;
     uint32_t lapCentiseconds;
     uint32_t totalCentiseconds;
+    uint8_t lapHistory[LAP_HISTORY_CAPACITY][LAP_HISTORY_RECORD_SIZE];
+    uint8_t lapHistoryCount;
+    uint8_t nextLapHistoryIndex;
   };
 
   struct BlacklistEntry {
@@ -72,6 +84,7 @@ private:
   bool running_;
   uint32_t athleteClockStartMs_;
   bool athleteClockStarted_;
+  uint32_t nextScoredOrder_;
   AthleteEntry athletes_[LIST_CAPACITY];
   AthleteScoreEntry athleteScores_[LIST_CAPACITY];
   BlacklistEntry blacklist_[LIST_CAPACITY];
@@ -86,6 +99,7 @@ private:
     }
     athleteClockStartMs_ = 0;
     athleteClockStarted_ = false;
+    nextScoredOrder_ = 0;
   }
 
   uint32_t toCentiseconds(uint32_t milliseconds) const {
@@ -113,6 +127,53 @@ private:
             entry.totalCentiseconds};
   }
 
+  const AthleteScoreEntry* findScore(uint16_t id) const {
+    for (size_t i = 0; i < LIST_CAPACITY; ++i) {
+      if (athleteScores_[i].enabled && athleteScores_[i].id == id) {
+        return &athleteScores_[i];
+      }
+    }
+    return nullptr;
+  }
+
+  void writeLapHistory(AthleteScoreEntry& entry, uint16_t rank) {
+    uint8_t* record = entry.lapHistory[entry.nextLapHistoryIndex];
+    uint16_t lapCount = entry.lapCount;
+    record[0] = static_cast<uint8_t>((lapCount >> 8) & 0xFF);
+    record[1] = static_cast<uint8_t>(lapCount & 0xFF);
+    record[2] = static_cast<uint8_t>((rank >> 8) & 0xFF);
+    record[3] = static_cast<uint8_t>(rank & 0xFF);
+    record[4] = static_cast<uint8_t>((entry.totalCentiseconds >> 16) & 0xFF);
+    record[5] = static_cast<uint8_t>((entry.totalCentiseconds >> 8) & 0xFF);
+    record[6] = static_cast<uint8_t>(entry.totalCentiseconds & 0xFF);
+
+    entry.nextLapHistoryIndex = static_cast<uint8_t>(
+      (entry.nextLapHistoryIndex + 1) % LAP_HISTORY_CAPACITY);
+    if (entry.lapHistoryCount < LAP_HISTORY_CAPACITY) {
+      ++entry.lapHistoryCount;
+    }
+  }
+
+  uint16_t rankFor(const AthleteEntry& athlete,
+                   const AthleteScoreEntry& score) const {
+    uint16_t rank = 1;
+    for (size_t i = 0; i < LIST_CAPACITY; ++i) {
+      const AthleteEntry& otherAthlete = athletes_[i];
+      if (!otherAthlete.enabled || otherAthlete.id == athlete.id) continue;
+      const AthleteScoreEntry* otherScore = findScore(otherAthlete.id);
+      if (otherScore == nullptr) continue;
+
+      bool otherAhead = otherScore->lapCount > score.lapCount ||
+        (otherScore->lapCount == score.lapCount &&
+         otherScore->totalCentiseconds < score.totalCentiseconds) ||
+        (otherScore->lapCount == score.lapCount &&
+         otherScore->totalCentiseconds == score.totalCentiseconds &&
+         otherAthlete.lastScoredOrder < athlete.lastScoredOrder);
+      if (otherAhead) ++rank;
+    }
+    return rank;
+  }
+
   void removeRecentEpc(uint32_t epc) {
     for (size_t i = 0; i < LIST_CAPACITY; ++i) {
       if (recentEpcs_[i].enabled && recentEpcs_[i].epc == epc) {
@@ -125,7 +186,7 @@ private:
 public:
   DetectionController()
     : running_(false), athleteClockStartMs_(0),
-      athleteClockStarted_(false) {
+      athleteClockStarted_(false), nextScoredOrder_(0) {
     clearAll();
   }
 
@@ -183,7 +244,7 @@ public:
       }
 
       // 定义表只负责EPC匹配和去重，成绩表独立保存比赛成绩。
-      athletes_[athleteSlot] = {true, id, epc, nowMs, true};
+      athletes_[athleteSlot] = {true, id, epc, nowMs, true, 0};
       athleteScores_[scoreSlot] = {true, id, 0, 0, total};
       removeRecentEpc(epc);
       info = snapshot(athleteScores_[scoreSlot]);
@@ -228,6 +289,9 @@ public:
         : 0;
       score->totalCentiseconds = total;
       ++score->lapCount;
+      ++nextScoredOrder_;
+      athlete.lastScoredOrder = nextScoredOrder_;
+      writeLapHistory(*score, rankFor(athlete, *score));
       return {EpcEventType::Athlete, snapshot(*score)};
     }
 
@@ -267,6 +331,31 @@ public:
   bool athleteAt(size_t slot, AthleteInfo& info) const {
     if (slot >= LIST_CAPACITY || !athleteScores_[slot].enabled) return false;
     info = snapshot(athleteScores_[slot]);
+    return true;
+  }
+
+  uint8_t athleteHistoryCount(size_t slot) const {
+    if (slot >= LIST_CAPACITY || !athleteScores_[slot].enabled) return 0;
+    return athleteScores_[slot].lapHistoryCount;
+  }
+
+  bool athleteHistoryAt(size_t slot, uint8_t historyIndex,
+                        AthleteLapHistoryRecord& record) const {
+    if (slot >= LIST_CAPACITY || !athleteScores_[slot].enabled) return false;
+    const AthleteScoreEntry& entry = athleteScores_[slot];
+    if (historyIndex >= entry.lapHistoryCount) return false;
+
+    uint8_t firstIndex = entry.lapHistoryCount == LAP_HISTORY_CAPACITY
+      ? entry.nextLapHistoryIndex : 0;
+    uint8_t physicalIndex = static_cast<uint8_t>(
+      (firstIndex + historyIndex) % LAP_HISTORY_CAPACITY);
+    const uint8_t* bytes = entry.lapHistory[physicalIndex];
+    record.lapCount = static_cast<uint16_t>(
+      (static_cast<uint16_t>(bytes[0]) << 8) | bytes[1]);
+    record.rank = static_cast<uint16_t>(
+      (static_cast<uint16_t>(bytes[2]) << 8) | bytes[3]);
+    record.totalCentiseconds = (static_cast<uint32_t>(bytes[4]) << 16) |
+      (static_cast<uint32_t>(bytes[5]) << 8) | bytes[6];
     return true;
   }
 };

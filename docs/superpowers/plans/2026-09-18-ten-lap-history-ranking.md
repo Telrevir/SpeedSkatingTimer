@@ -37,7 +37,7 @@
 - Produces: `bool DetectionController::athleteHistoryAt(size_t slot, uint8_t historyIndex, AthleteLapHistoryRecord& record) const;`
 - Extends: `AthleteScoreEntry` with a 10×7 fixed byte array, `lapHistoryCount` and `nextLapHistoryIndex`.
 
-- [ ] **Step 1: 先写环形历史和名次失败自测**
+- [x] **Step 1: 先写环形历史和名次失败自测**
 
 在`DetectionControllerSelfTest.cpp`新增独立控制器。定义两个运动员，在8秒边界后分别过线，验证圈数高者排名第1；同圈数时总用时短者排名第1；构造相同圈数和总用时的两个有效扫描，验证先完成有效扫描者排名更靠前。
 
@@ -54,7 +54,7 @@ assert(record.lapCount == 11);
 
 同时覆盖：定义运动员后历史为0；8秒内重复检测不增加历史；`stop()`和重新`start()`后槽位无历史。
 
-- [ ] **Step 2: 运行自测并确认失败原因正确**
+- [x] **Step 2: 运行自测并确认失败原因正确**
 
 运行：
 
@@ -65,7 +65,7 @@ cl /nologo /utf-8 /std:c++17 /EHsc /Fe:"%TEMP%\DetectionControllerSelfTest.exe" 
 
 预期：因`AthleteLapHistoryRecord`、历史访问器或名次写入尚不存在而编译失败。
 
-- [ ] **Step 3: 添加固定字节环形数组与只读访问器**
+- [x] **Step 3: 添加固定字节环形数组与只读访问器**
 
 在`DetectionController`私有区定义：
 
@@ -86,7 +86,7 @@ uint8_t nextLapHistoryIndex;
 
 新增公共`athleteHistoryCount()`和`athleteHistoryAt()`。后者将逻辑索引0映射到`lapHistoryCount < 10 ? 0 : nextLapHistoryIndex`，再按模10得到物理下标；读取时以位移恢复16位/24位整数。无效槽位、越界逻辑索引返回`false`。
 
-- [ ] **Step 4: 使用有效扫描序号计算排名并写入历史**
+- [x] **Step 4: 使用有效扫描序号计算排名并写入历史**
 
 为`AthleteEntry`增加`lastScoredOrder`，为`DetectionController`增加`nextScoredOrder_`；`clearAll()`重置该计数器。仅在运动员通过8秒规则后递增并赋给当前运动员，不能使用直接比较`millis()`，以避免计时器回绕时破坏“先扫描”规则。
 
@@ -94,7 +94,7 @@ uint8_t nextLapHistoryIndex;
 
 在`evaluateEpc()`更新当前总用时和圈数后，先更新`lastScoredOrder`，再计算名次、写入历史，最后返回已有`AthleteInfo`快照。不得把名次加入`AthleteInfo`或修改实时`0x12`。
 
-- [ ] **Step 5: 运行固件自测并检查原有行为**
+- [x] **Step 5: 运行固件自测并检查原有行为**
 
 运行：
 
@@ -106,7 +106,7 @@ cl /nologo /utf-8 /std:c++17 /EHsc /Fe:"%TEMP%\DetectionControllerSelfTest.exe" 
 
 预期：历史、环形覆盖、名次、8秒静默、清空和既有成绩断言全部通过。
 
-- [ ] **Step 6: 提交本任务**
+- [x] **Step 6: 提交本任务**
 
 ```text
 git add DetectionController.h tests/DetectionControllerSelfTest/DetectionControllerSelfTest.cpp
@@ -128,7 +128,7 @@ git commit -m "feat: store ranked ten-lap history"
 - Produces: `uint8_t DetectProtocol::buildAthleteLapHistoryPayload(uint16_t athleteId, const uint8_t* records, uint8_t recordCount, uint8_t* output);`
 - Produces: `bool LoraManager::sendAthleteLapHistory(uint16_t athleteId, const uint8_t* records, uint8_t recordCount);`
 
-- [ ] **Step 1: 写`0x15`Payload失败自测**
+- [x] **Step 1: 写`0x15`Payload失败自测**
 
 在`LoraProtocolSelfTest.cpp`添加`0x15`常量断言和空历史、两条历史、10条历史断言。两条样本必须验证：Payload前3字节为运动员ID和条数；后续每条恰为7字节且不改动输入记录；最大Payload长度为73；条数11时构建函数返回0。
 
@@ -142,7 +142,7 @@ assert(DetectProtocol::buildAthleteLapHistoryPayload(1, records, 2, payload) == 
 assert(payload[0] == 0 && payload[1] == 1 && payload[2] == 2);
 ```
 
-- [ ] **Step 2: 运行协议自测并确认失败**
+- [x] **Step 2: 运行协议自测并确认失败**
 
 运行：
 
@@ -153,19 +153,19 @@ cl /nologo /utf-8 /std:c++17 /EHsc /Fe:"%TEMP%\LoraProtocolSelfTest.exe" tests\L
 
 预期：缺少`CMD_ATHLETE_LAP_HISTORY`或Payload构建函数而失败。
 
-- [ ] **Step 3: 添加`0x15`常量、Payload构建和LoRa发送器**
+- [x] **Step 3: 添加`0x15`常量、Payload构建和LoRa发送器**
 
 在`DetectProtocol.h`增加`CMD_ATHLETE_LAP_HISTORY = 0x15`、`LAP_HISTORY_RECORD_SIZE = 7`和`MAX_LAP_HISTORY_RECORDS = 10`。`buildAthleteLapHistoryPayload()`校验运动员ID非0、条数不超过10，输出`id + count + count × 7字节原始记录`，并返回实际Payload长度；失败返回0。
 
 在`LoraManager.h`增加`sendAthleteLapHistory()`。它使用73字节局部Payload缓冲区，构建失败时返回`false`，成功时通过既有`sendPacket(CMD_ATHLETE_LAP_HISTORY, ...)`发送。不得改变收包状态机，因为`0x15`不是APP命令。
 
-- [ ] **Step 4: 让`sendAllAthletes()`按每名运动员发送快照和历史**
+- [x] **Step 4: 让`sendAllAthletes()`按每名运动员发送快照和历史**
 
 在`SpeedSkatingTimer.ino`中，为每个启用槽位：先保留现有`sendAthlete(athlete)`；再从`DetectionController::athleteHistoryCount(slot)`获取条数，按`athleteHistoryAt()`把每项重新编码到`uint8_t records[70]`；调用`loraManager.sendAthleteLapHistory(athlete.id, records, count)`。
 
 任一次`0x12`或`0x15`发送失败，调用`sendStatus(CMD_GET_ATHLETES, STATUS_LORA_SEND_FAILED, ...)`并中止遍历；随后仍执行现有`sendAthleteTransfer(false)`。空历史也必须调用发送器，形成3字节`0x15`。
 
-- [ ] **Step 5: 运行协议和控制器自测**
+- [x] **Step 5: 运行协议和控制器自测**
 
 运行：
 
@@ -179,7 +179,7 @@ cl /nologo /utf-8 /std:c++17 /EHsc /Fe:"%TEMP%\DetectionControllerSelfTest.exe" 
 
 预期：两组测试返回0；`0x12`的9字节断言保持不变。
 
-- [ ] **Step 6: 提交本任务**
+- [x] **Step 6: 提交本任务**
 
 ```text
 git add DetectProtocol.h LoraManager.h SpeedSkatingTimer.ino tests/LoraProtocolSelfTest/LoraProtocolSelfTest.cpp
@@ -205,7 +205,7 @@ git commit -m "feat: return ten-lap history in athlete sync"
 - Produces: `decodeFirmwareAthleteLapHistory(payload: Uint8Array): FirmwareAthleteLapHistory | null`。
 - Extends: `RaceSnapshot` with `firmwareLapHistories: FirmwareAthleteLapHistory[]` and `RaceStore::replaceFirmwareLapHistories()`。
 
-- [ ] **Step 1: 写`0x15`解码失败测试**
+- [x] **Step 1: 写`0x15`解码失败测试**
 
 在`athlete-sync-codec.test.ts`加入有效两条记录、空历史、错误条数、错误长度和ID为0的测试。有效样本断言按大端正确还原圈数、名次和总用时；记录条数大于10，或`payload.length !== 3 + count × 7`时必须返回`null`。
 
@@ -219,7 +219,7 @@ assert.deepEqual(
 )
 ```
 
-- [ ] **Step 2: 运行小程序测试并确认失败**
+- [x] **Step 2: 运行小程序测试并确认失败**
 
 运行：
 
@@ -229,19 +229,19 @@ pnpm --dir TimerCountMiniProgram test -- --test-name-pattern="history|athlete"
 
 预期：因`AthleteLapHistory`命令和解码器尚不存在而编译或断言失败。
 
-- [ ] **Step 3: 添加协议解码和RaceStore快照替换接口**
+- [x] **Step 3: 添加协议解码和RaceStore快照替换接口**
 
 在`commands.ts`增加`AthleteLapHistory = 0x15`。在`athlete-sync-codec.ts`使用既有`readUint16BE`和`readUint24BE`逐条解码，严格校验ID、条数和精确Payload长度；不得接收长度不足、额外字节或条数超过10的包。
 
 在`RaceStore`的初始`RaceSnapshot`增加冻结约定的普通数组`firmwareLapHistories: []`；新增`replaceFirmwareLapHistories(histories)`，深拷贝每个记录后一次性替换并通知订阅者。此状态只表达最近一次完整`0x11`传输的固件近10圈快照，不写入`ScoreRepository`，避免10圈窗口覆盖小程序既有的完整比赛与后端同步记录。
 
-- [ ] **Step 4: 在`0x13`传输边界内暂存并提交`0x15`**
+- [x] **Step 4: 在`0x13`传输边界内暂存并提交`0x15`**
 
 将`pendingAthleteTransfer`扩展为`histories: Map<number, FirmwareLapHistoryRecord[]>`和`historyInvalid: boolean`。收到`0x13=0x01`时清空Map；收到`0x15`时仅在传输进行中解码、验证运动员属于当前比赛参赛名单且ID未重复，然后写入Map。任何无效Payload、传输外的`0x15`、未知参赛ID或重复ID都设置`syncError`并令`historyInvalid = true`。
 
 收到`0x13=0x00`时，只有`started && !historyInvalid`才把Map转换为按运动员ID升序的数组并调用`raceStore.replaceFirmwareLapHistories()`；无效传输保持旧快照，不做部分替换。之后维持既有超时清理和Promise完成逻辑。
 
-- [ ] **Step 5: 写并运行控制器传输边界测试**
+- [x] **Step 5: 写并运行控制器传输边界测试**
 
 在`race-controller.test.ts`模拟开始比赛、`0x13=开始`、运动员`0x12`、运动员`0x15`和`0x13=结束`，断言`raceStore`只在结束标记后出现近10圈数据。再模拟错误长度和重复运动员ID，断言`syncError`为`0x15 Payload无效`或对应传输错误，且之前的`firmwareLapHistories`保持不变。
 
@@ -254,7 +254,7 @@ pnpm --dir TimerCountMiniProgram typecheck
 
 预期：协议、小程序控制器、历史存储和既有自动补圈测试全部通过。
 
-- [ ] **Step 6: 提交本任务**
+- [x] **Step 6: 提交本任务**
 
 ```text
 git add TimerCountMiniProgram/miniprogram/protocol/commands.ts TimerCountMiniProgram/miniprogram/protocol/athlete-sync-codec.ts TimerCountMiniProgram/miniprogram/stores/race-store.ts TimerCountMiniProgram/miniprogram/services/race-controller.ts TimerCountMiniProgram/tests/athlete-sync-codec.test.ts TimerCountMiniProgram/tests/race-controller.test.ts
@@ -275,15 +275,17 @@ git commit -m "feat: decode athlete ten-lap history"
 
 - Documents: `0x11 -> 0x13 / 0x12 / 0x15 / 0x13`序列、`0x15`字段、环形覆盖规则、排名规则及未完成实机验证。
 
-- [ ] **Step 1: 更新固件和小程序协议说明**
+- [x] **Step 1: 更新固件和小程序协议说明**
 
 在两份`LORAProtocol-byte.md`中添加`0x15`命令和字段格式，将`0x11`的返回序列改为每名运动员先`0x12`再`0x15`。提供空历史和单条历史示例，明确`0x12`格式不变、`0x15`最大73字节、记录按最早至最新排列。
 
-- [ ] **Step 2: 更新架构和待办**
+- [x] **Step 2: 更新架构和待办**
 
 在`ARCHITECTURE.md`增加`DetectionController`近10圈固定环形存储、扫描序号排名规则及`0x11`的数据流。在`CurrentTask.md`仅勾选已通过自动化验证的条目；STM32和微信真机联调继续留在待办或待实机验证。
 
 - [ ] **Step 3: 运行完整静态检查与测试**
+
+2026-09-18执行结果：`git diff --check`、三组固件纯C++自测、`race-controller.test.ts`和TypeScript类型检查通过。完整小程序套件仍有7项既存失败，涉及设备名期望、后端导入以及服务端分组缓存，不属于本任务改动范围；因此本步骤和实机联调仍保持未完成。
 
 运行：
 
@@ -301,7 +303,7 @@ pnpm --dir TimerCountMiniProgram typecheck
 
 预期：静态检查无输出；C++和TypeScript测试全绿；`0x12`仍为9字节；未安装Arduino CLI时明确记录STM32完整编译未执行。
 
-- [ ] **Step 4: 提交文档与计划状态**
+- [x] **Step 4: 提交文档与计划状态**
 
 ```text
 git add LORAProtocol-byte.md TimerCountMiniProgram/LORAProtocol-byte.md ARCHITECTURE.md CurrentTask.md docs/superpowers/plans/2026-09-18-ten-lap-history-ranking.md

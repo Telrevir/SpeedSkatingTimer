@@ -14,6 +14,12 @@
 
 ## 待办
 
+### RSSI 峰值计分
+
+- [x] 已确认方案：保留即时计分保险路径，在`config.h`中选择模式，默认启用300ms内最强RSSI样本计分。
+- [ ] 按`docs/superpowers/plans/2026-09-15-rssi-peak-scoring.md`实现通知帧RSSI提取、固定窗口聚合和新旧模式分派。
+- [ ] 完成固件自测、Arduino编译及STM32实机新旧模式对照；实机验收前不得标记完成。
+
 ### 圈历史重连同步
 
 - [x] 完成圈记录存储、分片协议和小程序重连更新设计；设计文件：`docs/superpowers/specs/2026-09-05-lap-history-reconnect-sync-design.md`。

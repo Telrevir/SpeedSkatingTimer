@@ -3,18 +3,26 @@
     {{backendAvailable ? '名单已与服务器连接，修改将在服务器确认后生效。' : (backendMessage || '正在连接服务器，已缓存名单仍可查看和参赛。')}}
   </view>
 
+  <view class="group-panel">
+    <text class="group-panel-title">运动员分组</text>
+    <view class="group-panel-actions">
+      <button class="group-manage" size="mini" disabled="{{!managementEnabled || !backendAvailable || busy}}" bindtap="manageGroups">管理运动员分组</button>
+      <button class="group-select" size="mini" disabled="{{!managementEnabled || busy}}" bindtap="selectRaceGroup">选择运动员分组</button>
+    </view>
+  </view>
+
   <view class="toolbar">
-    <text class="form-title">{{editingId ? '编辑运动员 #' + editingId : '新建运动员'}}</text>
+    <text class="form-title">新建运动员</text>
     <input class="form-input" value="{{formName}}" maxlength="32" placeholder="运动员姓名" bindinput="updateName" disabled="{{!managementEnabled || !backendAvailable || busy}}" />
     <input class="form-input" value="{{formEpc}}" maxlength="8" placeholder="8 位 EPC，例如 A1B2C3D4" bindinput="updateEpc" disabled="{{!managementEnabled || !backendAvailable || busy}}" />
     <view class="form-actions">
-      <button wx:if="{{editingId}}" class="secondary" size="mini" disabled="{{busy}}" bindtap="cancelEdit">取消</button>
-      <button class="primary" size="mini" loading="{{busy}}" disabled="{{!managementEnabled || !backendAvailable || busy}}" bindtap="saveAthlete">{{editingId ? '保存修改' : '添加运动员'}}</button>
+      <button class="primary" size="mini" loading="{{busy}}" disabled="{{!managementEnabled || !backendAvailable || busy}}" bindtap="saveAthlete">添加运动员</button>
     </view>
-    <button class="group-manage" size="mini" disabled="{{!managementEnabled || !backendAvailable || busy}}" bindtap="manageGroups">分组管理</button>
   </view>
 
-  <view wx:if="{{groups.length}}" class="group-list">
+  <input class="form-input athlete-search" value="{{athleteSearch}}" placeholder="搜索运动员" bindinput="updateAthleteSearch" />
+
+  <view wx:if="{{groups.length}}" class="group-list legacy-group-options">
     <view class="group-list-title">已有分组</view>
     <view class="group-chip" wx:for="{{groups}}" wx:key="id">{{item.name}}（{{item.count}}人）</view>
   </view>
@@ -22,26 +30,21 @@
   <view wx:if="{{athletes.length}}" class="athlete-list">
     <view class="athlete-row" wx:for="{{athletes}}" wx:key="id">
       <view>
-        <text class="athlete-name">{{item.name}}（#{{item.id}}）</text>
-        <text class="athlete-epc">{{item.epc}}</text>
+        <text class="athlete-name">{{item.name}}（{{item.epc}}）</text>
       </view>
-      <text>{{item.lap}} 圈</text>
-      <text>{{item.totalTime}}</text>
       <view class="row-actions">
         <button class="edit" size="mini" data-id="{{item.id}}" disabled="{{!managementEnabled || !backendAvailable || busy}}" bindtap="editAthlete">编辑</button>
-        <button class="delete" size="mini" data-id="{{item.id}}" disabled="{{!managementEnabled || !backendAvailable || busy}}" bindtap="archiveAthlete">归档</button>
+        <button class="delete" size="mini" data-id="{{item.id}}" disabled="{{!managementEnabled || !backendAvailable || busy}}" bindtap="archiveAthlete">删除</button>
       </view>
     </view>
   </view>
   <view wx:else class="empty">尚未添加运动员。</view>
 
-  <button class="archive-toggle" size="mini" bindtap="toggleArchived">{{showArchived ? '收起归档名单' : '查看归档名单'}}（{{archivedAthletes.length}}）</button>
   <view wx:if="{{showArchived}}" class="athlete-list archived-list">
     <block wx:if="{{archivedAthletes.length}}">
       <view class="archived-row" wx:for="{{archivedAthletes}}" wx:key="id">
         <view>
-          <text class="athlete-name">{{item.name}}（#{{item.id}}）</text>
-          <text class="athlete-epc">{{item.epc}}</text>
+          <text class="athlete-name">{{item.name}}（{{item.epc}}）</text>
         </view>
         <view class="row-actions">
           <button class="edit" size="mini" data-id="{{item.id}}" disabled="{{!managementEnabled || !backendAvailable || busy}}" bindtap="editAthlete">编辑</button>
@@ -67,6 +70,18 @@
         <button size="mini" disabled="{{busy}}" bindtap="closeGroupEditor">取消</button>
         <button wx:if="{{editingGroupId}}" size="mini" class="danger" loading="{{busy}}" disabled="{{busy || !backendAvailable}}" bindtap="deleteGroup">删除</button>
         <button size="mini" class="primary" loading="{{busy}}" disabled="{{busy || !backendAvailable}}" bindtap="saveGroup">保存</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{athleteEditorVisible}}" class="modal-mask">
+    <view class="athlete-editor-modal">
+      <text class="modal-title">编辑运动员 #{{editingId}}</text>
+      <input class="form-input" value="{{editFormName}}" maxlength="32" placeholder="运动员姓名" bindinput="updateEditingName" disabled="{{busy || !backendAvailable}}" />
+      <input class="form-input" value="{{editFormEpc}}" maxlength="8" placeholder="8 位 EPC，例如 A1B2C3D4" bindinput="updateEditingEpc" disabled="{{busy || !backendAvailable}}" />
+      <view class="modal-actions">
+        <button size="mini" disabled="{{busy}}" bindtap="closeAthleteEditor">取消</button>
+        <button size="mini" class="primary" loading="{{busy}}" disabled="{{busy || !backendAvailable}}" bindtap="saveEditedAthlete">保存</button>
       </view>
     </view>
   </view>

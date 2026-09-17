@@ -14,6 +14,16 @@ build/
 *.eep
 *.sym
 
+# Java/Node.js构建与依赖缓存
+**/target/
+.pnpm-store/
+**/miniprogram_npm/
+
+# 本地部署包与敏感配置
+后端服务器/**/*.zip
+后端服务器/docs/微信后台托管账号密码.txt
+后端服务器/wxcloudrun-springboot/src/main/resources/application.yml
+
 # 本地 IDE / 系统文件
 .vscode/
 .vs/

@@ -1,13 +1,5 @@
 <view class="page">
-  <view class="connection-card">
-    <view>
-      <text class="eyebrow">BLE 计时设备</text>
-      <text class="connection-text">{{connectionText}}</text>
-    </view>
-    <button wx:if="{{showConnectButton}}" class="connect-button" size="mini" loading="{{connecting || autoConnecting}}" disabled="{{connecting || autoConnecting}}" bindtap="connectDevice">
-      {{connecting ? '连接中' : connectButtonText}}
-    </button>
-  </view>
+  <text class="connection-status">{{connectionText}}</text>
 
   <view class="state-card {{raceStateClass}}">
     <text class="state-label">比赛状态</text>
@@ -15,14 +7,16 @@
     <text wx:if="{{finishLapText}}" class="finish-lap">{{finishLapText}}</text>
   </view>
 
-  <navigator class="live-races-link" url="/pages/live-races/index">查看当前比赛</navigator>
 
-  <view class="group-card">
-    <view>
-      <text class="section-title">当前分组</text>
-      <text class="group-name">{{groupName}}</text>
+  <view class="group-card {{groupCompact ? 'group-card-compact' : ''}}">
+    <view class="group-full-content {{groupCompact ? 'group-content-hidden' : ''}}">
+      <view>
+        <text class="section-title">当前分组</text>
+        <text class="group-name">{{groupName}}</text>
+      </view>
+      <button class="group-button" size="mini" bindtap="chooseGroup">选择分组</button>
     </view>
-    <button class="group-button" size="mini" bindtap="chooseGroup">选择分组</button>
+    <text class="group-compact-name {{groupCompact ? 'group-compact-visible' : ''}}">{{groupName}}</text>
   </view>
 
   <view class="leader-card">
@@ -38,7 +32,7 @@
   </view>
 
   <view class="ranking-card">
-    <view class="section-header"><text class="section-title">实时前五</text><text class="section-hint">小程序实时排名</text></view>
+    <view class="section-header"><text class="section-title">实时前五</text></view>
     <view wx:if="{{topFive.length}}" class="top-five">
       <view class="top-row" wx:for="{{topFive}}" wx:key="rank">
         <text class="rank-number">{{item.rank}}</text>
@@ -47,7 +41,9 @@
         <text class="rank-time">{{item.time}}</text>
       </view>
     </view>
-    <view wx:else class="empty-ranking">比赛开始后，排名将在这里实时更新</view>
+    <view wx:else class="top-five">
+      <view wx:for="{{rankingPlaceholders}}" wx:key="*this" class="top-row ranking-placeholder"></view>
+    </view>
   </view>
 
   <view class="actions">

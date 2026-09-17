@@ -2,7 +2,7 @@
 
 ## 广播与 GATT
 
-BT04-E 广播名称继续使用 `ESP32-LORA-BRIDGE`。标准固件使用 16 位 UUID，小程序使用 Bluetooth Base UUID 展开的 128 位表示。
+BT04-E 广播名称继续使用 `SKATING-TIMER`。标准固件使用 16 位 UUID，小程序使用 Bluetooth Base UUID 展开的 128 位表示。
 
 | 用途 | UUID | ESP32 属性 |
 |---|---|---|

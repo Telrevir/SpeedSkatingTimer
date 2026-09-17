@@ -4,7 +4,7 @@
 
 ## 当前功能
 
-- 搜索并连接 `ESP32-LORA-BRIDGE`，校验 `FFE0/FFE2/FFE1` 服务和特征，订阅通知并分片写入。
+- 搜索并连接 `SKATING-TIMER`，校验 `FFE0/FFE2/FFE1` 服务和特征，订阅通知并分片写入。
 - 小程序启动、比赛页显示或蓝牙断联后自动尝试查找目标设备；未找到时结束本轮扫描并保留手动连接入口，不弹出重复错误提示。
 - 本地维护运动员 ID、姓名、单 EPC、分组、归档状态及历史成绩。
 - “开始”发送 `0x01`；“结束”仅锁定领滑当前圈；“重置”发送 `0x02`，成功后清除本场数据。
@@ -41,14 +41,14 @@
 
 ## 后端接口与启动同步
 
-接口层位于 `miniprogram/services/backend-api/`，协调层位于 `miniprogram/services/backend-sync/`（启动同步）。使用 `wx.request`，不使用 curl，不依赖页面、蓝牙或本地仓库；协议以 `后端服务器/docs/api-protocol.md` 为准。
+接口层位于 `miniprogram/services/backend-api/`，协调层位于 `miniprogram/services/backend-sync/`（启动同步）。所有业务请求均经统一的 `BackendClient` 使用 `wx.cloud.callContainer` 访问微信云托管，不使用 curl、独立 URL 请求，也不依赖页面、蓝牙或本地仓库；协议以 `后端服务器/docs/api-protocol.md` 为准。
 
 接口文件职责：
 
 | 文件 | 职责与接口 |
 | --- | --- |
-| `backend-api/config.ts` | 集中配置地址、5 秒超时和暂用 `ClubID: 1`；不读取账号文件 |
-| `backend-api/request.ts` | JSON 请求、查询参数编码、统一返回状态；仅 HTTP 2xx 且 `code === 0` 成功，信封层不做业务映射 |
+| `backend-api/config.ts` | 集中配置云托管环境 `prod-d7ggbetdd4afc3563`、服务 `springboot-z3m5`、`/api/v1`、20 秒超时和暂用 `ClubID: 1`；不读取账号文件 |
+| `backend-api/request.ts` | 唯一网络出口：`wx.cloud.callContainer`、JSON 请求、查询参数编码、统一返回状态；仅 HTTP 2xx 且 `code === 0` 成功，信封层不做业务映射 |
 | `backend-api/athletes.ts` | 新增、分页读取 `/athletes` |
 | `backend-api/groups.ts` | 新增、分页读取 `/athlete-groups` |
 | `backend-api/group-members.ts` | 新增、分页读取 `/athlete-group-forms` |
@@ -70,13 +70,13 @@
 - 新比赛包时间单位是百分秒，与本地一致；不乘 10、不创建虚拟成绩。DTO 类型只提供编译期约束，正式导入前必须通过 `validation.ts` 运行时校验。
 - 单资源 `list` 是分页接口（每页最多 200，含禁用数据）；全量读取使用 `SyncDataApi.fetchAll`，不能拿单页当全量。全量接口读取禁用记录不等于授权删除本地记录。
 
-仍待人工确认：真实接口的回执形状与本文档校验假设一致、合法 request 域名、正式 ClubID 来源、跨设备 ID 冲突与唯一约束失败的错误码。尚未做真机或真实新接口联调（不得用真实接口做写测试）；此前电脑端单独调用运动员接口成功不代表全量同步已验证。
+仍待人工确认：云托管环境与服务绑定、真实接口的回执形状与本文档校验假设一致、正式 ClubID 来源、跨设备 ID 冲突与唯一约束失败的错误码。尚未做真机或真实新接口联调（不得用真实接口做写测试）；此前电脑端单独调用运动员接口成功不代表全量同步已验证。
 
 
 
 ## 旧临时上传（已停用，保留现场代码）
 
-`temporary-backend-sync.ts` 保留作历史参考，`TEMPORARY_BACKEND_SYNC_ENABLED` 为 `false`，已移除 `app.ts` 启动入口和 `app-services.ts` 装配。原有调试日志、仅上传有效运动员的现场改动均保留，旧模块未迁入新接口层。
+`temporary-backend-sync.ts` 保留作历史参考，`TEMPORARY_BACKEND_SYNC_ENABLED` 为 `false`，已移除 `app.ts` 启动入口和 `app-services.ts` 装配。若临时开关重新启用，其请求仍会委托统一 `BackendClient`，不会恢复独立网络访问。
 
 旧临时 ID 存储键 `timer_count_temporary_backend_ids_v1` 未清理；其逐条 POST、时间乘 10 等行为不适用于新比赛包契约，不应直接重新启用。保留的旧逻辑测试只在隔离测试环境显式启用，另有默认禁用及启动不上传的检查。
 

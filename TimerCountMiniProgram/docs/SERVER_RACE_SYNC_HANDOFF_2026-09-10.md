@@ -70,3 +70,12 @@
 - 用户已有 BLE 配置及对应文档/测试改动必须保留，不得回退或混入本轮功能提交。
 
 backend not pushed
+
+## 数据库生成 ID 联调补充
+
+- 新增运动员：POST /athletes 的 body 不得含 AthleteID；仅采用成功回执的正整数 AthleteID 写入本地缓存。
+- 新增分组：POST /athlete-group-bundles 的分组及成员 body 不得含 AthleteGroupID、AthleteGroupFormID 或成员的 AthleteGroupID；回执必须返还完整父子 ID。
+- 更新分组：PUT 路径携带已有 AthleteGroupID，body 不重复携带组 ID；只有已映射的成员关系可携带 AthleteGroupFormID，新增成员关系不带该字段。
+- AthleteID 不再有 65535 上限，但现行 0x10 固件协议仍为 16 位字段。后端业务 ID 与固件定义 ID 的对应方式需要在真机协议联调中单独确认，不能把超过 16 位范围的业务 ID 静默写入 0x10。
+- 本轮未运行自动化测试、微信开发者工具、真机或真实后端验证；仅允许执行类型检查。
+- 已执行 npm run typecheck 并通过；自动化测试、微信开发者工具、真机和真实后端验证仍未执行。

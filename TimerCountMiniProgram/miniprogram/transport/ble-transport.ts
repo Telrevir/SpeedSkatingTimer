@@ -1,9 +1,5 @@
-import { TARGET_DEVICE_NAME } from '../config/app-config'
 import {
-  BLE_COMMAND_RX_UUID,
-  BLE_NOTIFICATION_TX_UUID,
-  BLE_SERVICE_UUID,
-  BLE_WRITE_CHUNK_SIZE,
+  DEFAULT_BLE_PROFILE, BLE_WRITE_CHUNK_SIZE, type BleConnectionProfile,
 } from '../config/ble-config'
 import type { WechatBluetoothApi } from './wechat-bluetooth-api'
 
@@ -22,7 +18,10 @@ export class BleTransport {
   private readonly dataListeners = new Set<(value: Uint8Array) => void>()
   private readonly disconnectListeners = new Set<() => void>()
 
-  constructor(private readonly api: WechatBluetoothApi) {
+  constructor(
+    private readonly api: WechatBluetoothApi,
+    private readonly profileProvider: () => BleConnectionProfile = () => DEFAULT_BLE_PROFILE,
+  ) {
     this.api.onCharacteristicValue((event) => {
       if (event.deviceId !== this.deviceId
           || !this.notificationCharacteristicId
@@ -33,6 +32,7 @@ export class BleTransport {
     })
     this.api.onConnectionStateChange((event) => {
       if (event.connected || event.deviceId !== this.deviceId) return
+      this.diagnostic('连接已断开', { deviceId: event.deviceId })
       this.connectionEpoch += 1
       this.clearConnection()
       this.disconnectListeners.forEach((listener) => listener())
@@ -41,50 +41,80 @@ export class BleTransport {
 
   async connect(): Promise<void> {
     const connectionEpoch = ++this.connectionEpoch
+    const profile = this.profileProvider()
     let discoveryStarted = false
+    let stage = '打开蓝牙适配器'
     try {
+      this.diagnostic(stage)
       await this.api.openAdapter()
       this.state = 'scanning'
       // 必须先监听再扫描，避免设备首次广播发生在监听器注册之前。
-      const devicePromise = this.api.waitForDevice(TARGET_DEVICE_NAME)
+      stage = '注册目标设备监听'
+      this.diagnostic(stage, { targetName: profile.name, profileId: profile.id })
+      const devicePromise = this.api.waitForDevice(profile.name)
+      stage = '开始扫描'
+      this.diagnostic(stage, { targetName: profile.name, profileId: profile.id })
       await this.api.startDiscovery()
       discoveryStarted = true
+      stage = '等待目标设备广播'
       const device = await devicePromise
+      this.diagnostic('发现目标设备', { deviceId: device.deviceId, name: device.name })
+      stage = '停止扫描'
       await this.api.stopDiscovery()
       discoveryStarted = false
 
       this.state = 'connecting'
       this.deviceId = device.deviceId
+      stage = '建立 BLE 连接'
+      this.diagnostic(stage, { deviceId: device.deviceId })
       await this.api.createConnection(device.deviceId)
       this.ensureConnectionAttempt(connectionEpoch, device.deviceId)
+      this.diagnostic('BLE 连接已建立', { deviceId: device.deviceId })
+      stage = '读取 GATT 服务'
       const services = await this.api.getServices(device.deviceId)
       this.ensureConnectionAttempt(connectionEpoch, device.deviceId)
-      const service = services.find(({ uuid }) => sameUuid(uuid, BLE_SERVICE_UUID))
+      this.diagnostic('读取到 GATT 服务', { uuids: services.map(({ uuid }) => uuid) })
+      const service = services.find(({ uuid }) => sameUuid(uuid, profile.serviceUuid))
       if (!service) {
-        throw new BleCompatibilityError('BT04-E 未提供 FFE0 BLE 服务，请核对 AT+UUID')
+        throw new BleCompatibilityError(`${profile.name} 未提供目标 BLE 服务，请核对配置`)
       }
+      this.diagnostic('匹配到目标服务', { serviceId: service.uuid })
 
+      stage = '读取 GATT 特征'
       const characteristics = await this.api.getCharacteristics(device.deviceId, service.uuid)
       this.ensureConnectionAttempt(connectionEpoch, device.deviceId)
+      this.diagnostic('读取到 GATT 特征', {
+        serviceId: service.uuid,
+        characteristics: characteristics.map(({ uuid, properties }) => ({ uuid, properties })),
+      })
       const commandRx = characteristics.find(({ uuid, properties }) =>
-        sameUuid(uuid, BLE_COMMAND_RX_UUID)
+        sameUuid(uuid, profile.commandRxUuid)
         && (properties.write || properties.writeNoResponse))
       const notificationTx = characteristics.find(({ uuid, properties }) =>
-        sameUuid(uuid, BLE_NOTIFICATION_TX_UUID) && properties.notify)
+        sameUuid(uuid, profile.notificationTxUuid) && properties.notify)
       if (!commandRx || !notificationTx) {
-        throw new BleCompatibilityError('BT04-E 未提供 FFE2 写入或 FFE1 通知特征，请核对 AT+WRITE/AT+CHAR')
+        throw new BleCompatibilityError(`${profile.name} 未提供写入或通知特征，请核对配置`)
       }
+      this.diagnostic('匹配到读写特征', {
+        commandCharacteristicId: commandRx.uuid,
+        notificationCharacteristicId: notificationTx.uuid,
+      })
 
+      stage = '启用通知'
+      this.diagnostic(stage, { deviceId: device.deviceId, serviceId: service.uuid, characteristicId: notificationTx.uuid })
       await this.api.enableNotifications(device.deviceId, service.uuid, notificationTx.uuid)
       this.ensureConnectionAttempt(connectionEpoch, device.deviceId)
       this.serviceId = service.uuid
       this.commandCharacteristicId = commandRx.uuid
       this.notificationCharacteristicId = notificationTx.uuid
       this.state = 'connected'
+      this.diagnostic('蓝牙连接完成', { deviceId: device.deviceId, serviceId: service.uuid })
     } catch (error) {
+      this.diagnosticFailure(stage, error)
       if (discoveryStarted) {
         try {
           await this.api.stopDiscovery()
+          this.diagnostic('扫描已在失败后停止')
         } catch {
           // 扫描清理失败不能覆盖本轮连接的原始失败原因。
         }
@@ -147,8 +177,33 @@ export class BleTransport {
     this.commandCharacteristicId = null
     this.notificationCharacteristicId = null
   }
+
+  private diagnostic(stage: string, detail?: unknown): void {
+    const timestamp = new Date().toISOString()
+    if (detail === undefined) {
+      console.info(`[BLE ${timestamp}] ${stage}`)
+      return
+    }
+    console.info(`[BLE ${timestamp}] ${stage}`, detail)
+  }
+
+  private diagnosticFailure(stage: string, error: unknown): void {
+    const detail = error instanceof Error
+      ? { name: error.name, message: error.message, ...errorDetails(error) }
+      : { error }
+    console.error(`[BLE ${new Date().toISOString()}] 连接失败：${stage}`, detail)
+  }
 }
 
 function sameUuid(left: string, right: string): boolean {
   return left.toUpperCase() === right.toUpperCase()
+}
+
+function errorDetails(error: Error): Record<string, unknown> {
+  const value = error as Error & { errCode?: unknown; errno?: unknown; code?: unknown }
+  const details: Record<string, unknown> = {}
+  if (value.errCode !== undefined) details.errCode = value.errCode
+  if (value.errno !== undefined) details.errno = value.errno
+  if (value.code !== undefined) details.code = value.code
+  return details
 }

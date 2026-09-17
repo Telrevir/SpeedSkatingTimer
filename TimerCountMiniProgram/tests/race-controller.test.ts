@@ -231,7 +231,7 @@ test('keeps a successful BLE connection marked connected when protocol synchroni
 
 test('automatic connection reports not found without rejecting or sending protocol commands', async () => {
   const { controller, transport } = await fixture()
-  transport.connectError = new TargetDeviceNotFoundError('ESP32-LORA-BRIDGE')
+  transport.connectError = new TargetDeviceNotFoundError('SKATING-TIMER')
 
   await controller.autoConnect()
 
@@ -299,7 +299,7 @@ test('returns the controller to disconnected and unknown firmware state when BLE
   transport.emit(encodePacket(CommandId.RaceState, Uint8Array.of(FirmwareDetectionState.Stopped)))
   await connecting
 
-  transport.connectError = new TargetDeviceNotFoundError('ESP32-LORA-BRIDGE')
+  transport.connectError = new TargetDeviceNotFoundError('SKATING-TIMER')
   transport.disconnect()
 
   assert.equal(controller.snapshot.connectionState, ConnectionState.Disconnected)
@@ -313,7 +313,7 @@ test('preserves the active race session and local scoring state when BLE drops',
   const athletesBeforeDisconnect = controller.athletesSnapshot
   const sessionBeforeDisconnect = activeSessionRepository.load()
 
-  transport.connectError = new TargetDeviceNotFoundError('ESP32-LORA-BRIDGE')
+  transport.connectError = new TargetDeviceNotFoundError('SKATING-TIMER')
   transport.disconnect()
 
   assert.equal(controller.snapshot.localPhase, 'running')

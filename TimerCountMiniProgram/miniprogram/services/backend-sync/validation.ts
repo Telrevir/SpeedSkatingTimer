@@ -15,7 +15,7 @@ export function validateClubData(value: unknown, clubId: number, options: { race
   const scoreIds = new Set<number>()
   const Athletes = array(root.Athletes, 'Athletes').map((value) => {
     const item = object(value, 'Athlete')
-    const AthleteID = uniqueId(item.AthleteID, athleteIds, 'AthleteID', 65535)
+    const AthleteID = uniqueId(item.AthleteID, athleteIds, 'AthleteID', Number.MAX_SAFE_INTEGER)
     sameId(item.ClubID, clubId, 'Athlete.ClubID')
     const AthleteEPC = integer(item.AthleteEPC, 'AthleteEPC', 0, 0xffffffff)
     unique(AthleteEPC, epcs, 'AthleteEPC')

@@ -210,7 +210,9 @@ export class RaceController {
 
   async resetRace(): Promise<void> {
     await this.sendAcknowledgedCommand(CommandId.StopDetection, undefined, () => {
-      this.scoreRepository?.finishRace()
+      const localId = this.activeSessionRepository?.load()?.raceIdentity?.localId
+      if (this.raceSyncService && localId) this.raceSyncService.finish(localId)
+      else this.scoreRepository?.finishRace()
       this.raceHistoryFinished = true
       this.definitionQueue?.clear()
       this.activeSessionRepository?.clear()

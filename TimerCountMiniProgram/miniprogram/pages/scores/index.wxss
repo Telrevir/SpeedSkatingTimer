@@ -17,7 +17,9 @@
 .tree-arrow { width: 36rpx; margin-right: 10rpx; color: #2f6fed; font-size: 36rpx; line-height: 1; text-align: center; }
 .race-time, .race-status { display: block; }
 .race-time { color: #172033; font-size: 29rpx; font-weight: 700; }
-.race-status { margin-top: 8rpx; color: #98a2b3; font-size: 20rpx; }
+.race-status-row { display: flex; align-items: center; gap: 8rpx; margin-top: 8rpx; }
+.race-status { color: #98a2b3; font-size: 20rpx; }
+.race-upload-pending { color: #d92d20; font-size: 20rpx; font-weight: 600; }
 .race-summary { display: flex; flex-shrink: 0; gap: 22rpx; }
 .summary-item { display: flex; flex-direction: column; align-items: flex-end; }
 .summary-label { color: #98a2b3; font-size: 18rpx; }

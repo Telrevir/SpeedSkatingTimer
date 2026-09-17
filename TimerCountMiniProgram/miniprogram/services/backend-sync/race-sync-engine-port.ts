@@ -85,11 +85,8 @@ export class WorkerEnginePort implements RaceSyncEnginePort {
 
 /** 微信 Worker 不可用、创建失败或开发工具不支持时，安全退回主线程纯引擎。 */
 export function createWechatEnginePort(): RaceSyncEnginePort {
-  try {
-    const runtime = wx as unknown as { createWorker?: (path: string) => EngineWorkerPort }
-    if (!runtime.createWorker) return new FallbackEnginePort()
-    return new WorkerEnginePort(runtime.createWorker('workers/race-sync/index.js'))
-  } catch {
-    return new FallbackEnginePort()
-  }
+  // 微信 Worker 入口仅支持 workers 目录中的 JS 且不可引用目录外模块。
+  // 当前项目的 Worker 源码尚未具备该独立打包形态；在其完成前，直接使用
+  // 同一套纯调度规则的降级端口，避免 createWorker 产生未定义模块错误。
+  return new FallbackEnginePort()
 }

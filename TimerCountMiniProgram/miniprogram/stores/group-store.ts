@@ -58,7 +58,7 @@ export class GroupStore {
       || typeof group.name !== 'string' || !group.name.trim()
       || !Number.isFinite(group.createdAt) || !Number.isFinite(group.updatedAt)
       || !Array.isArray(group.athleteIds)
-      || Array.from(group.athleteIds).some((id) => !Number.isInteger(id) || id < 1 || id > 65535)) {
+      || Array.from(group.athleteIds).some((id) => !Number.isSafeInteger(id) || id < 1)) {
       throw new Error('导入分组资料不合法')
     }
     const name = group.name.trim()

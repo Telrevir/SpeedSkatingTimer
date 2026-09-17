@@ -2,7 +2,6 @@
   padding: 28rpx 28rpx 48rpx;
 }
 
-.connection-card,
 .leader-card,
 .ranking-card {
   display: flex;
@@ -12,34 +11,6 @@
   box-shadow: 0 12rpx 32rpx rgba(23, 32, 51, 0.08);
 }
 
-.connection-card {
-  align-items: center;
-  justify-content: space-between;
-}
-
-.eyebrow,
-.connection-text {
-  display: block;
-}
-
-.eyebrow {
-  margin-bottom: 8rpx;
-  color: #667085;
-  font-size: 22rpx;
-  letter-spacing: 2rpx;
-}
-
-.connection-text {
-  font-size: 28rpx;
-  font-weight: 600;
-}
-
-.connect-button {
-  margin: 0;
-  border-radius: 999rpx;
-  background: #e8efff;
-  color: #1d4ed8;
-}
 
 .state-card {
   margin-top: 24rpx;
@@ -61,7 +32,6 @@
 .state-waiting { background: #d4930d; }
 .state-running { background: #16875b; }
 .state-finished { background: #d13f4c; }
-.live-races-link { margin-top: 18rpx; padding: 18rpx 24rpx; border-radius: 12rpx; background: #eef4ff; color: #2457c5; font-size: 24rpx; font-weight: 600; text-align: center; }
 
 .group-card {
   display: flex;
@@ -129,6 +99,7 @@
   padding: 56rpx 0 28rpx;
   text-align: center;
 }
+.ranking-placeholder { opacity: .45; }
 
 .actions {
   display: grid;
@@ -147,3 +118,87 @@
 .reset-action { background: #ffffff; color: #344054; }
 .primary-action[disabled],
 .reset-action[disabled] { background: #e4e7ec; color: #98a2b3; }
+/* 比赛信息使用放大的字号；连接状态保持为低干扰的小字。 */
+.connection-status {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0 4rpx 16rpx;
+  color: #667085;
+  font-size: 22rpx;
+  line-height: 1.4;
+}
+.state-label { font-size: 28rpx; }
+.state-value { font-size: 50rpx; }
+.finish-lap { font-size: 30rpx; }
+
+.group-card {
+  display: block;
+  overflow: hidden;
+  padding: 24rpx 30rpx;
+  transition: padding .24s ease, min-height .24s ease;
+}
+.group-full-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-height: 140rpx;
+  opacity: 1;
+  transform: translateY(0);
+  transition: max-height .24s ease, opacity .18s ease, transform .24s ease;
+}
+.group-content-hidden {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-12rpx);
+  pointer-events: none;
+}
+.group-card-compact { min-height: 66rpx; padding: 0 30rpx; }
+.group-compact-name {
+  display: block;
+  max-height: 0;
+  opacity: 0;
+  color: #667085;
+  font-size: 22rpx;
+  line-height: 66rpx;
+  transition: max-height .24s ease, opacity .18s ease;
+}
+.group-compact-visible { max-height: 66rpx; opacity: 1; }
+.group-name { font-size: 30rpx; }
+.group-button { font-size: 30rpx; }
+
+.section-title { font-size: 38rpx; }
+.metric-label { font-size: 28rpx; }
+.metric-value { font-size: 38rpx; }
+.section-hint, .empty-ranking { font-size: 30rpx; }
+.top-row { min-height: 92rpx; font-size: 30rpx; }
+.rank-number, .rank-name { font-size: 32rpx; }
+.rank-lap, .rank-time { font-size: 30rpx; }
+.finished-badge { font-size: 22rpx; }
+
+.actions {
+  display: grid;
+  grid-template-columns: 30vw 30vw;
+  column-gap: 15vw;
+  justify-content: center;
+  align-items: center;
+}
+/* 临时隐藏连接与分组区域，保留结构以便后续恢复。 */
+.connection-status,
+.group-card { display: none; }
+
+.state-label { display: block; }
+.state-value { margin-top: 8rpx; }
+.primary-action,
+.reset-action {
+  width: 30vw;
+  height: 18vw;
+  min-height: 18vw;
+  margin: 0;
+  padding: 0;
+  border-radius: 28rpx;
+  font-size: 50rpx;
+  line-height: 18vw;
+  text-align: center;
+}

@@ -6,8 +6,9 @@ import {
 } from '../../domain/race-state'
 import type { Athlete } from '../../domain/athlete'
 import { formatRelativeTotalTime } from '../../domain/relative-total-time'
+import { createEmptyRankingSlots, getRaceNavigationTitle, isGroupCompact } from '../../domain/race-page-presentation'
 import { formatCentiseconds } from '../../domain/time-format'
-import { groupStore, raceController } from '../../services/app-services'
+import { bleProfileRepository, groupStore, raceController } from '../../services/app-services'
 import type { RaceSnapshot } from '../../stores/race-store'
 
 let unsubscribe: (() => void) | null = null
@@ -17,11 +18,7 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 
 Page({
   data: {
-    connecting: false,
-    autoConnecting: false,
-    connectButtonText: '连接',
-    connectionText: '未连接 ESP32-LORA-BRIDGE',
-    showConnectButton: true,
+    connectionText: `未连接 ${bleProfileRepository.active().name}`,
     raceStateText: '未连接设备',
     raceStateClass: 'state-disconnected',
     finishLapText: '',
@@ -29,10 +26,12 @@ Page({
     primaryEnabled: false,
     resetEnabled: false,
     groupName: '全部运动员',
+    groupCompact: false,
     leaderName: '—',
     leaderRawLap: '—',
     leaderCorrectionOffset: 0,
     leaderLapTime: '—',
+    rankingPlaceholders: createEmptyRankingSlots(),
     topFive: [] as Array<{
       rank: number
       name: string
@@ -45,28 +44,33 @@ Page({
 
   onLoad() {
     unsubscribe = raceController.subscribe((snapshot) => this.renderSnapshot(snapshot))
-    unsubscribeGroups = groupStore.subscribe(() => {
+    const refreshGroupName = () => {
       const active = groupStore.active
-      this.setData({ groupName: active?.name ?? '全部运动员' })
-    })
+      const groupName = active?.name ?? '全部运动员'
+      this.setData({ groupName })
+      wx.setNavigationBarTitle({ title: getRaceNavigationTitle(groupName) })
+    }
+    unsubscribeGroups = groupStore.subscribe(refreshGroupName)
+    refreshGroupName()
     unsubscribeAthletes = raceController.subscribeAthletes((athletes) => {
       const leader = athletes.find(({ id }) => id === raceController.snapshot.leaderAthleteId)
+      const topFive = athletes
+        .filter(({ currentRank, hasRaceScore }) => currentRank > 0 && hasRaceScore)
+        .sort((left, right) => left.currentRank - right.currentRank)
+        .slice(0, 5)
+        .map((athlete) => {
+          const lap = lapPresentation(athlete)
+          return {
+            rank: athlete.currentRank,
+            name: athlete.name,
+            rawLap: lap.rawLap,
+            correctionOffset: lap.correctionOffset,
+            time: formatRelativeTotalTime(athlete, leader),
+            finished: athlete.finished,
+          }
+        })
       this.setData({
-        topFive: athletes
-          .filter(({ currentRank, hasRaceScore }) => currentRank > 0 && hasRaceScore)
-          .sort((left, right) => left.currentRank - right.currentRank)
-          .slice(0, 5)
-          .map((athlete) => {
-            const lap = lapPresentation(athlete)
-            return {
-              rank: athlete.currentRank,
-              name: athlete.name,
-              rawLap: lap.rawLap,
-              correctionOffset: lap.correctionOffset,
-              time: formatRelativeTotalTime(athlete, leader),
-              finished: athlete.finished,
-            }
-          }),
+        topFive,
       })
       this.renderSnapshot(raceController.snapshot)
     })
@@ -90,21 +94,9 @@ Page({
 
   onShow() {
     void raceController.autoConnect()
+    this.renderSnapshot(raceController.snapshot)
   },
 
-  async connectDevice() {
-    if (this.data.connecting) return
-    this.setData({ connecting: true, connectionText: '正在连接 ESP32-LORA-BRIDGE' })
-    try {
-      await raceController.connect()
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '蓝牙连接失败'
-      this.setData({ connectionText: message })
-      wx.showToast({ title: message, icon: 'none', duration: 3000 })
-    } finally {
-      this.setData({ connecting: false })
-    }
-  },
 
   async toggleRace() {
     try {
@@ -151,6 +143,7 @@ Page({
     const connection = getConnectionPresentation(
       snapshot.connectionState,
       snapshot.autoConnectState,
+      bleProfileRepository.active().name,
     )
     const presentation = raceStatePresentation(snapshot)
     const leader = raceController.athletesSnapshot.find(({ id }) => id === snapshot.leaderAthleteId)
@@ -166,6 +159,7 @@ Page({
       leaderLapTime: snapshot.leaderLapCentiseconds === null
         ? '—'
         : formatCentiseconds(snapshot.leaderLapCentiseconds),
+      groupCompact: isGroupCompact(snapshot.localPhase, false),
       ...controls,
     })
   },

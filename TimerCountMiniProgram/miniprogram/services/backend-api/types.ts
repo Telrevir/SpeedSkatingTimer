@@ -6,6 +6,9 @@ export interface AthleteDto {
   Enabled: boolean
 }
 
+/** 新建运动员由后端生成 AthleteID；请求禁止携带该字段。 */
+export type AthleteCreateDto = Omit<AthleteDto, 'AthleteID'>
+
 export interface GroupDto {
   AthleteGroupID: number
   ClubID: number
@@ -18,6 +21,23 @@ export interface GroupMemberDto {
   AthleteGroupID: number
   AthleteID: number
   Enabled: boolean
+}
+
+/** 新建分组由后端生成主键；请求不包含 AthleteGroupID。 */
+export type GroupCreateDto = Omit<GroupDto, 'AthleteGroupID'>
+
+/** 新建分组成员关系由后端绑定父分组并生成关系主键。 */
+export type GroupMemberCreateDto = Omit<GroupMemberDto, 'AthleteGroupFormID' | 'AthleteGroupID'>
+
+export interface GroupBundleCreateDto {
+  AthleteGroup: GroupCreateDto
+  AthleteGroupForms: GroupMemberCreateDto[]
+}
+
+/** 更新通过 URL 中的分组 ID 定位；已有成员可附带其关系 ID。 */
+export interface GroupBundleUpdateDto {
+  AthleteGroup: GroupCreateDto
+  AthleteGroupForms: Array<GroupMemberCreateDto & Pick<GroupMemberDto, 'AthleteGroupFormID'>>
 }
 
 export interface RaceInfoDto {

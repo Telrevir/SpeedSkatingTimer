@@ -4,12 +4,11 @@ import type { AthleteCatalogService } from './athlete-catalog-service'
 import type { GroupStore } from '../stores/group-store'
 import type { RaceRecord, ScoreRepository } from './score-repository'
 import { AthleteStore } from '../stores/athlete-store'
+import { backendClient } from './backend-api/request'
 
 // 临时桥接入口：关闭此开关即可禁用，删除本模块及两个装配引用即可整体移除。
 export const TEMPORARY_BACKEND_SYNC_ENABLED = false
 const CONFIG = {
-  baseUrl: 'https://springboot-z3m5-307081-12-1465315659.sh.run.tcloudbase.com/api/v1',
-  timeoutMs: 5000,
   clubId: 1,
   centisecondsToBackendTime: 10,
   idStorageKey: 'timer_count_temporary_backend_ids_v1',
@@ -128,19 +127,19 @@ export function createTemporaryBackendSync(sources: {
       read: () => wx.getStorageSync(CONFIG.idStorageKey),
       write: (value) => wx.setStorageSync(CONFIG.idStorageKey, value),
     },
-    request: (request) => new Promise((resolve, reject) => {
-      wx.request({
-        url: `${CONFIG.baseUrl}${request.path}`,
-        method: 'POST',
-        header: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        data: request.data,
-        timeout: CONFIG.timeoutMs,
-        success: (response) => resolve({ statusCode: response.statusCode, data: response.data }),
-        fail: () => reject(new Error('temporary-backend-network')),
-      })
-    }),
+    request: requestThroughBackendClient,
     report: reportTemporarySync,
   })
+}
+
+/**
+ * 旧临时同步保留原有计数契约，但网络访问必须经过统一后端客户端。
+ */
+async function requestThroughBackendClient(request: TemporarySyncRequest): Promise<{ statusCode: number; data: unknown }> {
+  const result = await backendClient.request<unknown>({ path: request.path, method: 'POST', data: request.data })
+  if (result.ok) return { statusCode: result.httpStatus, data: { code: 0, data: result.data } }
+  if (result.kind === 'network') throw new Error('temporary-backend-network')
+  return { statusCode: result.httpStatus ?? 0, data: { code: result.code ?? 1 } }
 }
 
 function reportTemporarySync(result: SyncResult): void {

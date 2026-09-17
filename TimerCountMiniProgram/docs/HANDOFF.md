@@ -1,10 +1,10 @@
 # 开发交接文档
 
-更新时间：2026-09-03（第二阶段收尾 + RaceID 归属调整）
+更新时间：2026-09-15（云托管网络出口收口）
 
 ## 当前架构
 
-- `AthleteCatalogService` 管理本地运动员主档；ID 范围 `1..65535`，自动递增，归档后不复用。
+- `AthleteCatalogService` 管理本地运动员主档；服务端 AthleteID 为任意安全正整数，新增时以后端回执为准，归档后不复用。
 - `ActiveRaceSessionRepository` 以 schemaVersion 3 保存当前参赛 ID、活动分组 ID、定义成功数、本地比赛阶段与结束圈、比赛同步身份，以及每名运动员的原始圈数、补圈偏移、最后总时长和真实圈速历史；仍兼容 schemaVersion 1、2，成功重置后清除。
 - `ScoreRepository` 的版本化工作副本为每场比赛保存不可变的 `localId`、`ClientRaceKey`、可空 `RaceID` 和同步状态；每条真实成绩保存 `localScoreId`、`ClientScoreKey`、事件序号和可空 `ScoreID`。旧本地比赛记录可读并在下一次写入时迁移，在线完成后的清理由后续同步生命周期确认后执行。
 - `RaceOutboxRepository` 通过独立持久存储保存 create → score → finish 的依赖任务；相同 `ClientScoreKey` 合并，`400/409` 进入保留状态，不会因损坏的任务存储覆盖原始数据。
@@ -13,8 +13,8 @@
 - `RaceController` 分别协调前台同步、EPC 定义和成绩接收。`0x10` 与 `0x12` 无耦合。
 - `RaceController` 统一管理手动和自动连接尝试：小程序启动、比赛页显示及 BLE 断联后触发单轮自动连接；并发请求共用同一连接 Promise，未找到设备只更新状态，不弹 Toast。
 - 历史成绩页使用“比赛 → 圈 → 运动员成绩”三级树状视图。比赛层显示时间、最大记录圈数和真实有效单圈平均值；圈层领滑及第三级名次均直接采用当时保存的原始成绩，不重新计算，也不生成自动补圈对应的虚拟圈。
-- 第一阶段已停用旧临时上传：`temporary-backend-sync.ts` 默认 `false`，无启动调用与装配；旧文件现场改动和旧 ID 存储 `timer_count_temporary_backend_ids_v1` 保留，不再启动上传或弹窗。
-- 接口层 `services/backend-api/`：config 集中地址/ClubID，request 只处理 HTTP/业务信封（2xx 且 `code === 0`），athletes/groups/group-members/race-bundles/sync-data 按业务分离；无页面、蓝牙、仓库依赖，不自动请求、重试或弹窗。
+- 第一阶段已停用旧临时上传：`temporary-backend-sync.ts` 默认 `false`，无启动调用与装配；旧文件现场改动和旧 ID 存储 `timer_count_temporary_backend_ids_v1` 保留。若重新启用，网络请求会委托统一 `BackendClient`。
+- 接口层 `services/backend-api/`：config 集中云托管环境 `prod-d7ggbetdd4afc3563`、服务 `springboot-z3m5`、`/api/v1`、超时与 ClubID；request 是唯一网络出口，以 `wx.cloud.callContainer` 发起请求并处理 HTTP/业务信封（2xx 且 `code === 0`）。athletes/groups/group-members/race-bundles/sync-data 按业务分离；无页面、蓝牙、仓库依赖，不自动请求、重试或弹窗。
 - 协调层 `services/backend-sync/` 已实现并接入：`StartupSync.runOnce` 在 `App.onLaunch` 非阻塞运行一次（状态可读、输出单条摘要）；流程为 拉取 → `validation.ts` 运行时校验 → 运动员 → 分组/关系 → 比赛包 保守合并。
 - 后端契约：POST `/api/v1/race-bundles` 收单场比赛包，GET 同路径按 `ClubID` + `includeDisabled=true` 全量读取；时间百分秒。**比赛去重只使用 `RaceID`**：首次上传可不带 `RaceID`（后端生成并在成功响应返回，小程序绑定并持久化到该本地比赛），之后更新/重传携带同一 `RaceID`；远端历史无结束时间时 `finishedAt=null`，不虚构。
 - 上传前先持久化映射（存储键 `timer_count_backend_sync_ids_v1`，按 ClubID 隔离、重启稳定、损坏拒绝重置）；POST 成功须通过**回执身份/内容校验**（`data:null`、错误 ClubID/ID 计失败；比赛回执必须带有效 `RaceID`）；既有子记录 ID 被其他云端父记录占用时上传前整体跳过并记冲突。
@@ -70,7 +70,7 @@
 - iOS 不保证小程序在后台持续运行或持续接收 BLE；依赖固件保存当前成绩，并在前台恢复时通过 `0x11` 补齐当前状态。
 - 如果固件正在检测但本地活动会话缺失，`0x12` 和 `0x14` 会被忽略并记录“缺少本地比赛会话”。
 - 启动同步尚未经过真机/真实新接口联调：回执校验假设真实接口会回显所建记录的完整身份/内容（AthleteID、AthleteGroupID、组员三字段、RaceInfo 与子记录 ID），联调时须确认；不匹配时同步会保守失败而不是写错数据。
-- 待确认：合法 request 域名、ClubID 正式来源、跨手机 ID 冲突、唯一约束失败的明确错误码；后端契约已明确 EPC long 和时间百分秒。
+- 待确认：云托管环境/服务绑定和真机权限、ClubID 正式来源、跨手机 ID 冲突、唯一约束失败的明确错误码；后端契约已明确 EPC long 和时间百分秒。
 - 自动化验证命令：`npm test`、`npm run typecheck`。
 - 本次自动补圈实现按用户要求未执行自动化测试或类型检查。
 - 仍需真机检查：停止状态连接不发 `0x11`；开始会话；组内/组外 EPC 分类；前后台恢复序列；补圈偏移在进程重启后恢复；结束圈跨越与冻结；成功重置清理。

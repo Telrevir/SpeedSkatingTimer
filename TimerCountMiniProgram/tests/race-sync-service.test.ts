@@ -14,7 +14,7 @@ function fixture(response: (path: string, data: object | undefined) => unknown =
   const scoreRepository = new ScoreRepository(new Storage(), () => 1_700_000_000_000)
   const outbox = new RaceOutboxRepository(new Storage(), () => 1_700_000_000_000)
   const scheduler = new Scheduler()
-  const client = new BackendClient(async (request) => ({ statusCode: 200, data: response(request.url, request.data) }))
+  const client = new BackendClient(async (request) => ({ statusCode: 200, data: response(request.path, request.data) }))
   const service = new RaceSyncService({ scoreRepository, outbox, scheduler, client, clubId: 1 })
   return { scoreRepository, outbox, scheduler, service }
 }

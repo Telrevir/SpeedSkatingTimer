@@ -3,7 +3,7 @@ import { createGroupBundle } from './backend-api/groups/create-group-bundle'
 import { deleteGroupBundle } from './backend-api/groups/delete-group-bundle'
 import { updateGroupBundle } from './backend-api/groups/update-group-bundle'
 import type { BackendClient } from './backend-api/request'
-import type { GroupBundleDto } from './backend-api/types'
+import type { GroupBundleCreateDto, GroupBundleDto, GroupBundleUpdateDto } from './backend-api/types'
 import type { AthleteCatalogService } from './athlete-catalog-service'
 import type { CatalogCacheRepository } from './catalog-cache-repository'
 import { CatalogCacheSync } from './backend-sync/catalog-cache-sync'
@@ -37,16 +37,13 @@ export class GroupManagementService {
 
   async create(name: string, athleteIds: number[]): Promise<ManagementResult> {
     try {
-      const current = this.options.cache.load(this.options.clubId)
       const ids = new SyncIdMapping(this.options.mappingStorage, this.options.clubId)
-      const pendingKey = `pending:${this.now()}:${current.groups.length}`
-      const id = ids.assign('group', pendingKey)
-      const group = candidate(id, name, athleteIds, undefined, this.now(), this.options.athleteCatalog)
-      const bundle = toBundle(group, this.options.clubId, ids, pendingKey)
-      ids.save()
+      const current = this.options.cache.load(this.options.clubId)
+      const draft = validateDraft(name, athleteIds, this.options.athleteCatalog)
+      const bundle = toCreateBundle(draft, this.options.clubId)
       const receipt = await createGroupBundle(this.options.client, bundle)
-      if (!receipt.ok || !sameBundle(receipt.data, bundle)) return failure(receipt.ok ? '服务器回执无效' : receipt.message)
-      ids.rekey('group', pendingKey, groupKey(group.id))
+      if (!receipt.ok) return failure(receipt.message)
+      const group = fromReceipt(receipt.data, bundle, undefined, this.now())
       bindReceipt(ids, group.id, receipt.data)
       ids.save()
       return await this.commit(current.groups, group)
@@ -60,13 +57,14 @@ export class GroupManagementService {
       const current = this.options.cache.load(this.options.clubId)
       const previous = current.groups.find((group) => group.id === id)
       if (!previous) throw new Error('分组不存在')
+      const groupId = serverId(id)
       const ids = new SyncIdMapping(this.options.mappingStorage, this.options.clubId)
-      if (ids.get('group', groupKey(id)) === undefined) ids.bind('group', groupKey(id), serverId(id))
-      const group = candidate(serverId(id), name, athleteIds, previous, this.now(), this.options.athleteCatalog)
-      const bundle = toBundle(group, this.options.clubId, ids, groupKey(id))
-      ids.save()
-      const receipt = await updateGroupBundle(this.options.client, serverId(group.id), bundle)
-      if (!receipt.ok || !sameBundle(receipt.data, bundle)) return failure(receipt.ok ? '服务器回执无效' : receipt.message)
+      if (ids.get('group', groupKey(id)) === undefined) ids.bind('group', groupKey(id), groupId)
+      const draft = validateDraft(name, athleteIds, this.options.athleteCatalog)
+      const bundle = toUpdateBundle(draft, this.options.clubId, ids, id)
+      const receipt = await updateGroupBundle(this.options.client, groupId, bundle)
+      if (!receipt.ok) return failure(receipt.message)
+      const group = fromReceipt(receipt.data, bundle, previous, this.now(), groupId)
       bindReceipt(ids, group.id, receipt.data)
       ids.save()
       return await this.commit(current.groups, group)
@@ -111,37 +109,70 @@ export class GroupManagementService {
   }
 }
 
-function candidate(id: number, name: string, athleteIds: number[], previous: AthleteGroup | undefined, timestamp: number,
-  athletes: AthleteCatalogService): AthleteGroup {
+interface GroupDraft {
+  name: string
+  athleteIds: number[]
+}
+
+function validateDraft(name: string, athleteIds: number[], athletes: AthleteCatalogService): GroupDraft {
   const normalized = name.trim()
   if (!normalized) throw new Error('分组名称不能为空')
   const members = [...new Set(athleteIds)]
-  if (members.some((athleteId) => !Number.isInteger(athleteId) || athleteId < 1 || !athletes.lookupActiveById(athleteId))) {
+  if (members.some((athleteId) => !Number.isSafeInteger(athleteId) || athleteId < 1 || !athletes.lookupActiveById(athleteId))) {
     throw new Error('分组成员不存在或已禁用')
   }
-  return { id: String(id), name: normalized, athleteIds: members, createdAt: previous?.createdAt ?? timestamp,
-    updatedAt: timestamp, enabled: true, memberEnabled: Object.fromEntries(members.map((member) => [String(member), true])) }
+  return { name: normalized, athleteIds: members }
 }
 
-function toBundle(group: AthleteGroup, clubId: number, ids: SyncIdMapping, groupMappingKey: string): GroupBundleDto {
-  const groupId = ids.get('group', groupMappingKey)
-  if (groupId === undefined) throw new Error('分组同步 ID 不存在')
+function toCreateBundle(draft: GroupDraft, clubId: number): GroupBundleCreateDto {
   return {
-    AthleteGroup: { AthleteGroupID: groupId, ClubID: clubId, AthleteGroupName: group.name, Enabled: true },
-    AthleteGroupForms: group.athleteIds.map((AthleteID) => ({
-      AthleteGroupFormID: ids.assign('member', memberKey(group.id, AthleteID)),
-      AthleteGroupID: groupId, AthleteID, Enabled: true,
-    })),
+    AthleteGroup: { ClubID: clubId, AthleteGroupName: draft.name, Enabled: true },
+    AthleteGroupForms: draft.athleteIds.map((AthleteID) => ({ AthleteID, Enabled: true })),
   }
 }
 
-function sameBundle(value: GroupBundleDto, expected: GroupBundleDto): boolean {
-  if (!value || !value.AthleteGroup || value.AthleteGroup.AthleteGroupID !== expected.AthleteGroup.AthleteGroupID
-    || value.AthleteGroup.ClubID !== expected.AthleteGroup.ClubID || value.AthleteGroup.AthleteGroupName !== expected.AthleteGroup.AthleteGroupName
-    || value.AthleteGroup.Enabled !== expected.AthleteGroup.Enabled || !Array.isArray(value.AthleteGroupForms)) return false
-  const received = value.AthleteGroupForms.map((form) => `${form.AthleteGroupFormID}:${form.AthleteGroupID}:${form.AthleteID}:${form.Enabled}`).sort()
-  const sent = expected.AthleteGroupForms.map((form) => `${form.AthleteGroupFormID}:${form.AthleteGroupID}:${form.AthleteID}:${form.Enabled}`).sort()
-  return JSON.stringify(received) === JSON.stringify(sent)
+function toUpdateBundle(draft: GroupDraft, clubId: number, ids: SyncIdMapping, groupId: string): GroupBundleUpdateDto {
+  return {
+    AthleteGroup: { ClubID: clubId, AthleteGroupName: draft.name, Enabled: true },
+    AthleteGroupForms: draft.athleteIds.map((AthleteID) => {
+      const formId = ids.get('member', memberKey(groupId, AthleteID))
+      return { ...(formId === undefined ? {} : { AthleteGroupFormID: formId }), AthleteID, Enabled: true }
+    }),
+  }
+}
+
+function fromReceipt(value: GroupBundleDto | undefined, expected: GroupBundleCreateDto | GroupBundleUpdateDto,
+  previous: AthleteGroup | undefined, timestamp: number, expectedGroupId?: number): AthleteGroup {
+  const group = value?.AthleteGroup
+  if (!group || !validPositiveId(group.AthleteGroupID) || (expectedGroupId !== undefined && group.AthleteGroupID !== expectedGroupId)
+    || group.ClubID !== expected.AthleteGroup.ClubID || group.AthleteGroupName !== expected.AthleteGroup.AthleteGroupName
+    || group.Enabled !== expected.AthleteGroup.Enabled || !Array.isArray(value.AthleteGroupForms)) {
+    throw new Error('服务器回执无效')
+  }
+  const expectedIds = new Set(expected.AthleteGroupForms.map((form) => form.AthleteID))
+  const forms = new Map<number, GroupBundleDto['AthleteGroupForms'][number]>()
+  value.AthleteGroupForms.forEach((form) => {
+    if (!validPositiveId(form.AthleteGroupFormID) || !Number.isSafeInteger(form.AthleteID) || form.AthleteID < 1
+      || form.AthleteGroupID !== group.AthleteGroupID || !form.Enabled || !expectedIds.has(form.AthleteID) || forms.has(form.AthleteID)) {
+      throw new Error('服务器回执无效')
+    }
+    forms.set(form.AthleteID, form)
+  })
+  if (forms.size !== expectedIds.size) throw new Error('服务器回执无效')
+  const athleteIds = value.AthleteGroupForms.map((form) => form.AthleteID)
+  return {
+    id: String(group.AthleteGroupID),
+    name: group.AthleteGroupName,
+    athleteIds,
+    createdAt: previous?.createdAt ?? timestamp,
+    updatedAt: timestamp,
+    enabled: group.Enabled,
+    memberEnabled: Object.fromEntries(value.AthleteGroupForms.map((form) => [String(form.AthleteID), form.Enabled])),
+  }
+}
+
+function validPositiveId(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
 }
 
 function serverId(value: string): number {

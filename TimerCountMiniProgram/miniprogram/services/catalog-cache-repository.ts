@@ -10,9 +10,15 @@ import type { AthleteCatalog } from '../domain/athlete-profile'
 import type { AthleteGroup } from '../domain/athlete-group'
 
 export class CatalogCacheRepository {
-  private cache = parseCatalogCache(this.storage.read())
+  private readonly storage: CatalogCacheStorage
+  private cache: ReturnType<typeof parseCatalogCache>
 
-  constructor(private readonly storage: CatalogCacheStorage) {}
+  constructor(storage: CatalogCacheStorage) {
+    // 不使用参数属性和字段初始化器的组合：部分小程序编译产物会先执行
+    // 字段初始化器，导致 this.storage 尚未赋值时便调用 read()。
+    this.storage = storage
+    this.cache = parseCatalogCache(storage.read())
+  }
 
   load(clubId: number): ClubCatalogCacheEntry {
     validateClubId(clubId)

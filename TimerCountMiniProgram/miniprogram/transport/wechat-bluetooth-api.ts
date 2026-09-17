@@ -1,5 +1,7 @@
 import { TargetDeviceNotFoundError } from '../domain/race-state'
 
+const DEVICE_DISCOVERY_TIMEOUT_MS = 20_000
+
 export interface BleDevice {
   deviceId: string
   name: string
@@ -56,27 +58,62 @@ export class WechatBluetoothApiAdapter implements WechatBluetoothApi {
   }
 
   async startDiscovery(): Promise<void> {
-    await wx.startBluetoothDevicesDiscovery({ allowDuplicatesKey: false })
+    await wx.startBluetoothDevicesDiscovery({
+      // 为排查 Android/微信对 BT04-E 广播的可见性，使用最高扫描强度并立即重复上报。
+      allowDuplicatesKey: false,
+      interval: 0,
+      powerLevel: 'high',
+    })
   }
 
   waitForDevice(name: string): Promise<BleDevice> {
     return new Promise((resolve, reject) => {
+      const cachedDevicesTimeoutId = setTimeout(() => {
+        void this.logCachedDevices(name)
+      }, DEVICE_DISCOVERY_TIMEOUT_MS / 2)
       const timeoutId = setTimeout(() => {
+        clearTimeout(cachedDevicesTimeoutId)
         wx.offBluetoothDeviceFound()
         reject(new TargetDeviceNotFoundError(name))
-      }, 10_000)
+      }, DEVICE_DISCOVERY_TIMEOUT_MS)
       const listener: WechatMiniprogram.OnBluetoothDeviceFoundCallback = (result) => {
+        // 使用 warn 而非 info，避免开发者工具仅显示“警告和错误”时漏掉扫描回调。
+        console.warn(`[BLE ${new Date().toISOString()}] 扫描回调（${result.devices.length} 台）`,
+          result.devices.map((device) => ({
+            deviceId: device.deviceId,
+            name: device.name,
+            localName: device.localName,
+            nameMatches: device.name === name,
+            localNameMatches: device.localName === name,
+          })))
         const match = result.devices.find((device) =>
           device.name === name || device.localName === name)
         if (!match) {
           return
         }
         clearTimeout(timeoutId)
+        clearTimeout(cachedDevicesTimeoutId)
         wx.offBluetoothDeviceFound()
         resolve({ deviceId: match.deviceId, name })
       }
       wx.onBluetoothDeviceFound(listener)
     })
+  }
+
+  private async logCachedDevices(name: string): Promise<void> {
+    try {
+      const result = await wx.getBluetoothDevices()
+      console.warn(`[BLE ${new Date().toISOString()}] 10 秒缓存设备列表（${result.devices.length} 台）`,
+        result.devices.map((device) => ({
+          deviceId: device.deviceId,
+          name: device.name,
+          localName: device.localName,
+          nameMatches: device.name === name,
+          localNameMatches: device.localName === name,
+        })))
+    } catch (error) {
+      console.warn(`[BLE ${new Date().toISOString()}] 读取缓存设备列表失败`, error)
+    }
   }
 
   async stopDiscovery(): Promise<void> {

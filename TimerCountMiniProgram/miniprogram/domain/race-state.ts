@@ -1,5 +1,5 @@
 import type { LocalRacePhase } from './local-race-scoring'
-import { TARGET_DEVICE_NAME } from '../config/app-config'
+import { DEFAULT_BLE_PROFILE } from '../config/ble-config'
 
 export enum ConnectionState {
   Disconnected = 'disconnected',
@@ -43,11 +43,12 @@ export interface ConnectionPresentation {
 export function getConnectionPresentation(
   connectionState: ConnectionState,
   autoConnectState: AutoConnectState = AutoConnectState.Idle,
+  deviceName = DEFAULT_BLE_PROFILE.name,
 ): ConnectionPresentation {
   const connected = connectionState === ConnectionState.Connected
   if (connected) {
     return {
-      connectionText: `${autoConnectState === AutoConnectState.Connected ? '已自动连接' : '已连接'} ${TARGET_DEVICE_NAME}`,
+      connectionText: `${autoConnectState === AutoConnectState.Connected ? '已自动连接' : '已连接'} ${deviceName}`,
       showConnectButton: false,
       autoConnecting: false,
       connectButtonText: '连接',
@@ -55,7 +56,7 @@ export function getConnectionPresentation(
   }
   if (autoConnectState === AutoConnectState.Searching) {
     return {
-      connectionText: `正在自动查找 ${TARGET_DEVICE_NAME}`,
+      connectionText: `正在自动查找 ${deviceName}`,
       showConnectButton: true,
       autoConnecting: true,
       connectButtonText: '正在查找',
@@ -63,7 +64,7 @@ export function getConnectionPresentation(
   }
   if (autoConnectState === AutoConnectState.NotFound) {
     return {
-      connectionText: `本轮未找到 ${TARGET_DEVICE_NAME}，可手动连接`,
+      connectionText: `本轮未找到 ${deviceName}，可手动连接`,
       showConnectButton: true,
       autoConnecting: false,
       connectButtonText: '连接',
@@ -78,7 +79,7 @@ export function getConnectionPresentation(
     }
   }
   return {
-    connectionText: `未连接 ${TARGET_DEVICE_NAME}`,
+    connectionText: `未连接 ${deviceName}`,
     showConnectButton: true,
     autoConnecting: false,
     connectButtonText: '连接',

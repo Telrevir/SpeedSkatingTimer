@@ -21,6 +21,7 @@ export interface RaceHistoryViewModel {
   id: string
   startedAt: string
   status: string
+  uploadPending: boolean
   totalLaps: number
   averageLapTime: string
   laps: LapHistoryViewModel[]
@@ -110,6 +111,7 @@ export function buildRaceHistoryViewModel(record: RaceRecord): RaceHistoryViewMo
     id: record.id,
     startedAt: formatDate(record.startedAt),
     status: record.finishedAt === null ? '进行中' : '已结束',
+    uploadPending: record.syncState === 'pending' || record.syncState === 'offline',
     totalLaps: orderedLaps.length === 0 ? 0 : orderedLaps[orderedLaps.length - 1]!.lap,
     averageLapTime: averageCentiseconds === null ? '—' : formatCentiseconds(averageCentiseconds),
     laps: orderedLaps,

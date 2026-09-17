@@ -18,7 +18,7 @@
           <text class="tree-arrow">{{race.expanded ? '⌄' : '›'}}</text>
           <view>
             <text class="race-time">{{race.startedAt}}</text>
-            <text class="race-status">{{race.status}}</text>
+            <view class="race-status-row"><text class="race-status">{{race.status}}</text><text wx:if="{{race.uploadPending}}" class="race-upload-pending">（未上传）</text></view>
           </view>
         </view>
         <view class="race-summary">

@@ -22,25 +22,36 @@ import { listRaceBundles } from '../miniprogram/services/backend-api/races/list-
 import { listActiveRaces } from '../miniprogram/services/backend-api/races/list-active-races'
 import { listLatestScores } from '../miniprogram/services/backend-api/races/list-latest-scores'
 
-test('backend request sends JSON through wx.request and returns the business payload', async () => {
+test('backend request routes JSON through the configured cloud container service', async () => {
   const runtime = globalThis as unknown as { wx?: unknown }
   const previous = runtime.wx
-  const outgoing: Array<TransportRequest & { success: (response: { statusCode: number; data: unknown }) => void }> = []
+  const outgoing: Array<{
+    config?: { env?: string }
+    service?: string
+    path?: string
+    method?: string
+    header?: Record<string, string>
+    data?: unknown
+    timeout?: number
+    success: (response: { statusCode: number; data: unknown }) => void
+  }> = []
   try {
-    runtime.wx = { request: (request: typeof outgoing[number]) => {
+    runtime.wx = { cloud: { callContainer: (request: typeof outgoing[number]) => {
       outgoing.push(request)
       request.success({ statusCode: 200, data: { code: 0, message: 'success', errorMsg: '', data: { AthleteID: 7 } } })
-    } }
+    } } }
     const result = await new BackendClient().request<{ AthleteID: number }>({
       path: '/athletes', method: 'POST', data: { AthleteID: 7, AthleteName: '甲' },
     })
     assert.deepEqual(result, { ok: true, httpStatus: 200, data: { AthleteID: 7 } })
     assert.equal(outgoing.length, 1)
-    assert.equal(outgoing[0]!.url, 'https://springboot-z3m5-307081-12-1465315659.sh.run.tcloudbase.com/api/v1/athletes')
+    assert.equal(outgoing[0]!.config?.env, 'prod-d7ggbetdd4afc3563')
+    assert.equal(outgoing[0]!.service, 'springboot-z3m5')
+    assert.equal(outgoing[0]!.path, '/api/v1/athletes')
     assert.equal(outgoing[0]!.method, 'POST')
-    assert.equal(outgoing[0]!.header['Content-Type'], 'application/json')
+    assert.equal(outgoing[0]!.header?.['Content-Type'], 'application/json')
     assert.deepEqual(outgoing[0]!.data, { AthleteID: 7, AthleteName: '甲' })
-    assert.ok(outgoing[0]!.timeout > 0)
+    assert.ok((outgoing[0]!.timeout ?? 0) > 0)
   } finally { runtime.wx = previous }
 })
 
@@ -79,14 +90,58 @@ test('network failures return a state without rejection, retries or UI dependenc
   assert.equal(calls, 1)
 })
 
+test('backend request reports network failure to the configured diagnostic logger', async () => {
+  const entries: Array<{ level: string; details: Record<string, unknown> }> = []
+  const ClientWithDiagnostics = BackendClient as unknown as new (
+    transport: (request: TransportRequest) => Promise<{ statusCode: number; data: unknown }>,
+    logger: {
+      info: (message: string, details: Record<string, unknown>) => void
+      warn: (message: string, details: Record<string, unknown>) => void
+    },
+    now: () => number,
+  ) => BackendClient
+  const client = new ClientWithDiagnostics(
+    async () => { throw new Error('timeout') },
+    {
+      info: (_message, details) => entries.push({ level: 'info', details }),
+      warn: (_message, details) => entries.push({ level: 'warn', details }),
+    },
+    () => 1_700_000_000_000,
+  )
+
+  await client.request({ method: 'POST', path: '/races', data: { ClientRaceKey: 'race-local-1' } })
+
+  assert.equal(entries.length, 2)
+  assert.deepEqual(entries[0], {
+    level: 'info',
+    details: {
+      timestamp: '2023-11-14T22:13:20.000Z',
+      method: 'POST',
+      path: '/races',
+      timeoutMs: 20_000,
+    },
+  })
+  assert.deepEqual(entries[1], {
+    level: 'warn',
+    details: {
+      timestamp: '2023-11-14T22:13:20.000Z',
+      method: 'POST',
+      path: '/races',
+      elapsedMs: 0,
+      kind: 'network',
+      message: '网络请求失败或超时',
+    },
+  })
+})
+
 test('GET encodes query values and preserves false and zero', async () => {
-  let url = ''
+  let path = ''
   const client = new BackendClient(async (request) => {
-    url = request.url
+    path = request.path
     return { statusCode: 200, data: { code: 0, data: [] } }
   })
   await client.request({ method: 'GET', path: '/athletes', query: { ClubID: 3, name: '甲 & 乙', enabled: false, page: 0 } })
-  assert.equal(url, 'https://springboot-z3m5-307081-12-1465315659.sh.run.tcloudbase.com/api/v1/athletes?ClubID=3&name=%E7%94%B2%20%26%20%E4%B9%99&enabled=false&page=0')
+  assert.equal(path, '/api/v1/athletes?ClubID=3&name=%E7%94%B2%20%26%20%E4%B9%99&enabled=false&page=0')
 })
 
 test('business APIs keep separate paths and send only their explicit DTOs', async () => {
@@ -98,7 +153,7 @@ test('business APIs keep separate paths and send only their explicit DTOs', asyn
   await new AthletesApi(client).create({ AthleteID: 7, ClubID: 3, AthleteName: '甲', AthleteEPC: 4294967295, Enabled: false })
   await new GroupsApi(client).create({ AthleteGroupID: 11, ClubID: 3, AthleteGroupName: '一队', Enabled: true })
   await new GroupMembersApi(client).create({ AthleteGroupFormID: 12, AthleteGroupID: 11, AthleteID: 7, Enabled: true })
-  assert.deepEqual(sent.map((request) => new URL(request.url).pathname), ['/api/v1/athletes', '/api/v1/athlete-groups', '/api/v1/athlete-group-forms'])
+  assert.deepEqual(sent.map((request) => request.path), ['/api/v1/athletes', '/api/v1/athlete-groups', '/api/v1/athlete-group-forms'])
   assert.ok(sent.every((request) => request.method === 'POST'))
   assert.deepEqual(sent[0]!.data, { AthleteID: 7, ClubID: 3, AthleteName: '甲', AthleteEPC: 4294967295, Enabled: false })
   assert.deepEqual(sent[1]!.data, { AthleteGroupID: 11, ClubID: 3, AthleteGroupName: '一队', Enabled: true })
@@ -116,7 +171,7 @@ test('individual lists scope queries explicitly and expose pagination including 
   await new GroupMembersApi(client).list(11, 2)
   assert.ok(athletes.ok)
   if (athletes.ok) assert.deepEqual(athletes.data, { list: [], total: 0, page: 2, pageSize: 20 })
-  assert.deepEqual(sent.map((request) => new URL(request.url).search), [
+  assert.deepEqual(sent.map((request) => request.path.slice(request.path.indexOf('?'))), [
     '?ClubID=3&page=2&pageSize=200&includeDisabled=true',
     '?ClubID=3&page=2&pageSize=200&includeDisabled=true',
     '?AthleteGroupID=11&page=2&pageSize=200&includeDisabled=true',
@@ -138,7 +193,7 @@ test('race bundle is one POST preserving centiseconds, raw laps and one real sco
   })
   assert.equal(result.ok, true)
   assert.equal(sent.length, 1)
-  assert.equal(new URL(sent[0]!.url).pathname, '/api/v1/race-bundles')
+  assert.equal(sent[0]!.path, '/api/v1/race-bundles')
   assert.equal(sent[0]!.method, 'POST')
   const body = sent[0]!.data as { RaceInfo: Record<string, unknown>; Scores: Array<Record<string, unknown>> }
   assert.equal('RaceID' in body.RaceInfo, false)
@@ -157,7 +212,7 @@ test('all-data fetch uses the confirmed race-bundles path with explicit or confi
   await api.fetchAll()
   assert.ok(result.ok)
   if (result.ok) assert.deepEqual(result.data, { ClubID: 3, Athletes: [], AthleteGroups: [], AthleteGroupForms: [], RaceBundles: [] })
-  assert.deepEqual(sent.map((request) => new URL(request.url).pathname + new URL(request.url).search), ['/api/v1/race-bundles?ClubID=3&includeDisabled=true', '/api/v1/race-bundles?ClubID=1&includeDisabled=true'])
+  assert.deepEqual(sent.map((request) => request.path), ['/api/v1/race-bundles?ClubID=3&includeDisabled=true', '/api/v1/race-bundles?ClubID=1&includeDisabled=true'])
   assert.ok(sent.every((request) => request.method === 'GET'))
 })
 
@@ -209,7 +264,7 @@ test('endpoint modules isolate every server route and omit generated IDs on crea
   await listActiveRaces(client, 1)
   await listLatestScores(client, 101)
 
-  assert.deepEqual(sent.map((request) => `${request.method} ${new URL(request.url).pathname}${new URL(request.url).search}`), [
+  assert.deepEqual(sent.map((request) => `${request.method} ${request.path}`), [
     'GET /api/v1/athletes?ClubID=1&page=2&pageSize=20&includeDisabled=true',
     'POST /api/v1/athletes',
     'PUT /api/v1/athletes/7',

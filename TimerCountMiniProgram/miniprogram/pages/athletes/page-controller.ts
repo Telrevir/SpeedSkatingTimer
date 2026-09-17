@@ -1,4 +1,5 @@
 import type { AthleteProfile } from '../../domain/athlete-profile'
+import { matchesAthleteSearch } from '../../domain/athlete-search'
 import { formatRelativeTotalTime } from '../../domain/relative-total-time'
 
 export interface ManagementResult { ok: boolean; message: string }
@@ -19,6 +20,7 @@ interface AthletePageDependencies {
     snapshot: { leaderAthleteId: number | null }
     subscribe(listener: () => void): () => void
     subscribeAthletes(listener: () => void): () => void
+    selectGroup(groupId: string | null): void
   }
   athleteManagement: {
     create(name: string, epc: string): Promise<ManagementResult>
@@ -41,8 +43,12 @@ interface AthletePageData {
   archivedAthletes: Array<{ id: number; name: string; epc: string }>
   showArchived: boolean
   editingId: number
+  athleteEditorVisible: boolean
   formName: string
   formEpc: string
+  editFormName: string
+  editFormEpc: string
+  athleteSearch: string
   busy: boolean
   managementEnabled: boolean
   backendAvailable: boolean
@@ -75,16 +81,18 @@ export function createAthletePageDefinition(
     const scoreById = new Map(scores.map((athlete) => [athlete.id, athlete]))
     const leader = scores.find(({ id }) => id === dependencies.raceController.snapshot.leaderAthleteId)
     page.setData({
-      athletes: dependencies.athleteCatalog.activeSnapshot.map((profile) => {
-        const score = scoreById.get(profile.id)
-        return {
-          id: profile.id,
-          name: profile.name,
-          epc: profile.epc,
-          lap: !score || score.lapCount < 0 ? '—' : String(score.lapCount),
-          totalTime: score ? formatRelativeTotalTime(score as never, leader as never) : '—',
-        }
-      }),
+      athletes: dependencies.athleteCatalog.activeSnapshot
+        .filter((profile) => matchesAthleteSearch(profile, page.data.athleteSearch))
+        .map((profile) => {
+          const score = scoreById.get(profile.id)
+          return {
+            id: profile.id,
+            name: profile.name,
+            epc: profile.epc,
+            lap: !score || score.lapCount < 0 ? '—' : String(score.lapCount),
+            totalTime: score ? formatRelativeTotalTime(score as never, leader as never) : '—',
+          }
+        }),
       archivedAthletes: dependencies.athleteCatalog.archivedSnapshot.map(({ id, name, epc }) => ({ id, name, epc })),
     })
   }
@@ -93,7 +101,7 @@ export function createAthletePageDefinition(
     const status = await dependencies.catalogSync.refresh()
     page.setData({
       backendAvailable: status.state === 'completed',
-      backendMessage: status.state === 'completed' ? '' : '服务器暂不可用，仍可查看已缓存的名单和分组。',
+      backendMessage: status.state === 'completed' ? '' : '目录同步超时或失败，仍可查看已缓存的名单和分组。',
     })
   }
 
@@ -156,7 +164,8 @@ export function createAthletePageDefinition(
 
   return {
     data: {
-      athletes: [], archivedAthletes: [], showArchived: false, editingId: 0, formName: '', formEpc: '', busy: false,
+      athletes: [], archivedAthletes: [], showArchived: false, editingId: 0, athleteEditorVisible: false,
+      formName: '', formEpc: '', editFormName: '', editFormEpc: '', athleteSearch: '', busy: false,
       managementEnabled: true, backendAvailable: false, backendMessage: '', groups: [], groupModalVisible: false,
       editingGroupId: '', groupFormName: '', groupSearch: '', groupSelectedIds: [], groupCandidates: [],
     } as AthletePageData,
@@ -183,25 +192,49 @@ export function createAthletePageDefinition(
 
     updateName(this: PageContext, event: WechatMiniprogram.Input) { this.setData({ formName: event.detail.value }) },
     updateEpc(this: PageContext, event: WechatMiniprogram.Input) { this.setData({ formEpc: event.detail.value.toUpperCase() }) },
+    updateAthleteSearch(this: PageContext, event: WechatMiniprogram.Input) {
+      this.setData({ athleteSearch: event.detail.value })
+      renderAthletes(this)
+    },
 
     async saveAthlete(this: PageContext) {
-      const editingId = this.data.editingId
       await runManagementAction(
         this,
-        () => editingId
-          ? dependencies.athleteManagement.update(editingId, this.data.formName, this.data.formEpc)
-          : dependencies.athleteManagement.create(this.data.formName, this.data.formEpc),
-        editingId ? '运动员信息已更新' : '运动员已添加',
-        () => this.setData({ editingId: 0, formName: '', formEpc: '' }),
+        () => dependencies.athleteManagement.create(this.data.formName, this.data.formEpc),
+        '运动员已添加',
+        () => this.setData({ formName: '', formEpc: '' }),
       )
     },
 
     editAthlete(this: PageContext, event: WechatMiniprogram.TouchEvent) {
       if (!ensureManagementEnabled(this) || this.data.busy) return
       const athlete = findProfile(dependencies, Number(event.currentTarget.dataset.id))
-      if (athlete) this.setData({ editingId: athlete.id, formName: athlete.name, formEpc: athlete.epc })
+      if (athlete) this.setData({
+        editingId: athlete.id,
+        athleteEditorVisible: true,
+        editFormName: athlete.name,
+        editFormEpc: athlete.epc,
+      })
     },
-    cancelEdit(this: PageContext) { this.setData({ editingId: 0, formName: '', formEpc: '' }) },
+    closeAthleteEditor(this: PageContext) {
+      this.setData({ editingId: 0, athleteEditorVisible: false, editFormName: '', editFormEpc: '' })
+    },
+    updateEditingName(this: PageContext, event: WechatMiniprogram.Input) {
+      this.setData({ editFormName: event.detail.value })
+    },
+    updateEditingEpc(this: PageContext, event: WechatMiniprogram.Input) {
+      this.setData({ editFormEpc: event.detail.value.toUpperCase() })
+    },
+    async saveEditedAthlete(this: PageContext) {
+      const editingId = this.data.editingId
+      if (!editingId) return
+      await runManagementAction(
+        this,
+        () => dependencies.athleteManagement.update(editingId, this.data.editFormName, this.data.editFormEpc),
+        '运动员信息已更新',
+        () => this.setData({ editingId: 0, athleteEditorVisible: false, editFormName: '', editFormEpc: '' }),
+      )
+    },
 
     async archiveAthlete(this: PageContext, event: WechatMiniprogram.TouchEvent) {
       if (!ensureManagementEnabled(this) || this.data.busy) return
@@ -218,6 +251,21 @@ export function createAthletePageDefinition(
     },
 
     toggleArchived(this: PageContext) { this.setData({ showArchived: !this.data.showArchived }) },
+
+    async selectRaceGroup(this: PageContext) {
+      if (!dependencies.raceController.canManageAthletes) {
+        notify('本场比赛重置前不能切换分组')
+        return
+      }
+      const groups = dependencies.groupStore.snapshot
+      const index = await choose(dependencies, ['全部运动员', ...groups.map(({ name }) => name)])
+      if (index === null) return
+      try {
+        dependencies.raceController.selectGroup(groups[index - 1]?.id ?? null)
+      } catch {
+        notify('切换分组失败')
+      }
+    },
 
     async manageGroups(this: PageContext) {
       if (!ensureManagementEnabled(this) || this.data.busy) return

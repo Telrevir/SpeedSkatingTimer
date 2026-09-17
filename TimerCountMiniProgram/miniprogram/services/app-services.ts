@@ -27,8 +27,11 @@ import { backendClient } from './backend-api/request'
 import type { ApiResult } from './backend-api/request'
 import { BACKEND_CONFIG } from './backend-api/config'
 
+import { WechatBleProfileStorage } from '../platform/wechat-ble-profile-storage'
+import { BleProfileRepository } from './ble-profile-repository'
 const bluetoothApi = new WechatBluetoothApiAdapter()
-const bleTransport = new BleTransport(bluetoothApi)
+export const bleProfileRepository = new BleProfileRepository(new WechatBleProfileStorage())
+const bleTransport = new BleTransport(bluetoothApi, () => bleProfileRepository.active())
 export const scoreRepository = new ScoreRepository(new WechatScoreStorage())
 export const groupStore = new GroupStore(new WechatGroupStorage())
 export const athleteCatalog = new AthleteCatalogService(new AthleteRepository(new WechatAthleteCatalogStorage()), {

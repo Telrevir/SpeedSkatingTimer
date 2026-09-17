@@ -24,7 +24,7 @@
       { "pagePath": "pages/ranking/index", "text": "排名" },
       { "pagePath": "pages/athletes/index", "text": "运动员" },
       { "pagePath": "pages/scores/index", "text": "成绩" },
-      { "pagePath": "pages/logs/index", "text": "日志" }
+      { "pagePath": "pages/logs/index", "text": "调试" }
     ]
   },
   "sitemapLocation": "sitemap.json"

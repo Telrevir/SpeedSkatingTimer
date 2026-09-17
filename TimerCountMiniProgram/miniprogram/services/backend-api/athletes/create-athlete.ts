@@ -1,6 +1,6 @@
 import type { ApiResult, BackendClient } from '../request'
-import type { AthleteDto } from '../types'
+import type { AthleteCreateDto, AthleteDto } from '../types'
 
-export function createAthlete(client: BackendClient, athlete: AthleteDto): Promise<ApiResult<AthleteDto>> {
+export function createAthlete(client: BackendClient, athlete: AthleteCreateDto): Promise<ApiResult<AthleteDto>> {
   return client.request({ method: 'POST', path: '/athletes', data: athlete })
 }

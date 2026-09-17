@@ -26,7 +26,7 @@ interface Options {
 }
 
 /**
- * 主线程唯一网络入口。Worker 只能发送受限 payload；所有 wx.request 保留在本桥接层。
+ * 主线程唯一网络入口。Worker 只能发送受限 payload；所有网络访问由注入的 BackendClient 统一处理。
  * Worker 不可用时按相同 Promise 契约串行执行，不阻塞页面回调。
  */
 export class WorkerRequestBridge {
@@ -98,8 +98,15 @@ export class WorkerRequestBridge {
   private getWorker(): WorkerPort | null {
     if (this.workerUnavailable) return null
     if (this.worker) return this.worker
+    // 生产环境暂不创建微信 Worker：当前 Worker 入口未能作为独立 JS 包交付，
+    // 强行调用 wx.createWorker 会在开发工具中报“module is not defined”。
+    // 没有注入测试/平台适配器时，使用下方既有的串行降级请求队列。
+    if (!this.options.createWorker) {
+      this.workerUnavailable = true
+      return null
+    }
     try {
-      const worker = (this.options.createWorker ?? createWechatWorker)()
+      const worker = this.options.createWorker()
       worker.onMessage((message) => this.handleMessage(message))
       worker.onTerminate?.(() => this.handleTermination())
       this.worker = worker
@@ -129,10 +136,4 @@ export class WorkerRequestBridge {
 
 function pendingKey(requestId: string, taskId: string): string {
   return `${requestId}\u0000${taskId}`
-}
-
-function createWechatWorker(): WorkerPort {
-  const runtime = wx as unknown as { createWorker?: (path: string) => WorkerPort }
-  if (!runtime.createWorker) throw new Error('当前环境不支持 Worker')
-  return runtime.createWorker('workers/race-sync/index.js')
 }

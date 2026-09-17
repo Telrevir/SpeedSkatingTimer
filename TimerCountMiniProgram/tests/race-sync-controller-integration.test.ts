@@ -163,3 +163,15 @@ test('only live scores and one completed finish are sent to the lifecycle servic
   assert.deepEqual(lifecycle.scores.map((call) => call.historical), [false])
   assert.equal(lifecycle.finishes, 1)
 })
+
+test('Reset ACK completes the backend race lifecycle', async () => {
+  const { controller, transport, lifecycle } = await fixture()
+  await start(controller, transport)
+
+  const reset = controller.resetRace()
+  await Promise.resolve()
+  transport.emit(encodePacket(CommandId.CommandResult, Uint8Array.of(CommandId.StopDetection, 0x00)))
+  await reset
+
+  assert.equal(lifecycle.finishes, 1)
+})

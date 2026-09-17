@@ -78,6 +78,7 @@ export class RaceHistoryQuery {
     const byId = new Map(profiles.map((profile) => [profile.id, profile]))
     return {
       id: `server-${info.RaceID}`,
+      syncState: 'online',
       startedAt: parseRaceDate(info.RaceDate),
       finishedAt: info.IsFinished ? parseRaceDate(info.RaceDate) : null,
       participantIds: bundle.AthleteRaceJoins.filter((join) => join.Enabled).map((join) => join.AthleteID),

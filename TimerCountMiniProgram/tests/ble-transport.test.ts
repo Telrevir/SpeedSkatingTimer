@@ -114,7 +114,7 @@ test('connects to the named device and subscribes to the configured GATT charact
   assert.equal(transport.state, 'connected')
   assert.deepEqual(api.calls, [
     'openAdapter',
-    'waitForDevice:ESP32-LORA-BRIDGE',
+    'waitForDevice:SKATING-TIMER',
     'startDiscovery',
     'stopDiscovery',
     'createConnection:device-1',

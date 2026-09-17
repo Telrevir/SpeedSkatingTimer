@@ -26,6 +26,7 @@ export interface RaceRecord {
   finishedAt: number | null
   scores: LapScoreRecord[]
   participantIds?: number[]
+  syncState?: RaceSyncState
 }
 
 export interface ScoreStorage {
@@ -275,7 +276,7 @@ function cloneRace(record: RaceWorkingCopy): RaceWorkingCopy {
 export interface PersistedLapScoreRecord extends LapScoreRecord, ScoreIdentity {}
 
 /** 只保存活动比赛、离线比赛和等待服务器确认的比赛工作副本。 */
-export interface RaceWorkingCopy extends Omit<RaceRecord, 'scores'>, RaceIdentity {
+export interface RaceWorkingCopy extends Omit<RaceRecord, 'scores' | 'syncState'>, RaceIdentity {
   scores: PersistedLapScoreRecord[]
 }
 
@@ -306,7 +307,7 @@ function validateImportedRace(record: RaceRecord): void {
 }
 
 function validAthleteId(value: number): boolean {
-  return Number.isInteger(value) && value >= 1 && value <= 65535
+  return Number.isSafeInteger(value) && value >= 1
 }
 
 function validCount(value: number): boolean {

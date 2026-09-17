@@ -3,7 +3,7 @@ import { utf8Bytes } from '../protocol/binary'
 import { createAthlete } from './backend-api/athletes/create-athlete'
 import { updateAthlete } from './backend-api/athletes/update-athlete'
 import type { BackendClient } from './backend-api/request'
-import type { AthleteDto } from './backend-api/types'
+import type { AthleteCreateDto, AthleteDto } from './backend-api/types'
 import type { AthleteCatalogService } from './athlete-catalog-service'
 import type { CatalogCacheRepository } from './catalog-cache-repository'
 import type { GroupStore } from '../stores/group-store'
@@ -44,10 +44,11 @@ export class AthleteManagementService {
   async create(name: string, epc: string): Promise<ManagementResult> {
     try {
       const current = this.options.cache.load(this.options.clubId)
-      const athlete = candidate(current.athletes, undefined, name, epc, this.now())
-      const dto = toDto(athlete, this.options.clubId)
+      const draft = validateDraft(current.athletes, undefined, name, epc)
+      const dto = toCreateDto(draft, this.options.clubId)
       const receipt = await createAthlete(this.options.client, dto)
-      if (!receipt.ok || !sameDto(receipt.data, dto)) return failure(receipt.ok ? '服务器回执无效' : receipt.message)
+      if (!receipt.ok) return failure(receipt.message)
+      const athlete = fromCreateReceipt(current.athletes, receipt.data, dto, this.now())
       const next = replace(current.athletes, athlete)
       return await this.commit(next, current.groups)
     } catch (error) {
@@ -112,7 +113,13 @@ export class AthleteManagementService {
   }
 }
 
-function candidate(catalog: AthleteCatalog, id: number | undefined, name: string, epc: string, timestamp: number): AthleteProfile {
+interface AthleteDraft {
+  name: string
+  epc: string
+  existing?: AthleteProfile
+}
+
+function validateDraft(catalog: AthleteCatalog, id: number | undefined, name: string, epc: string): AthleteDraft {
   const normalizedName = name.trim()
   if (!normalizedName) throw new Error('运动员姓名不能为空')
   if (utf8Bytes(normalizedName).length > 32) throw new Error('运动员姓名不能超过 32 个 UTF-8 字节')
@@ -123,19 +130,43 @@ function candidate(catalog: AthleteCatalog, id: number | undefined, name: string
   if (catalog.athletes.some((row) => row.id !== id && row.epc === normalizedEpc && row.status === 'active')) {
     throw new Error('EPC 已绑定其他运动员')
   }
-  const nextId = id ?? catalog.nextId
-  if (!Number.isInteger(nextId) || nextId < 1 || nextId > 65535) throw new Error('运动员 ID 已耗尽')
+  return { name: normalizedName, epc: normalizedEpc, existing }
+}
+
+function candidate(catalog: AthleteCatalog, id: number, name: string, epc: string, timestamp: number): AthleteProfile {
+  const draft = validateDraft(catalog, id, name, epc)
   return {
-    id: nextId,
-    name: normalizedName,
-    epc: normalizedEpc,
-    status: existing?.status ?? 'active',
-    createdAt: existing?.createdAt ?? timestamp,
+    id,
+    name: draft.name,
+    epc: draft.epc,
+    status: draft.existing!.status,
+    createdAt: draft.existing!.createdAt,
     updatedAt: timestamp,
-    archivedAt: existing?.archivedAt ?? null,
+    archivedAt: draft.existing!.archivedAt,
   }
 }
 
+function fromCreateReceipt(catalog: AthleteCatalog, value: AthleteDto | undefined, expected: AthleteCreateDto, timestamp: number): AthleteProfile {
+  if (!value || !Number.isSafeInteger(value.AthleteID) || value.AthleteID < 1
+    || catalog.athletes.some((athlete) => athlete.id === value.AthleteID)
+    || value.ClubID !== expected.ClubID || value.AthleteName !== expected.AthleteName
+    || value.AthleteEPC !== expected.AthleteEPC || value.Enabled !== expected.Enabled) {
+    throw new Error('服务器回执无效')
+  }
+  return {
+    id: value.AthleteID,
+    name: value.AthleteName,
+    epc: value.AthleteEPC.toString(16).toUpperCase().padStart(8, '0'),
+    status: value.Enabled ? 'active' : 'archived',
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    archivedAt: value.Enabled ? null : timestamp,
+  }
+}
+
+function toCreateDto(draft: AthleteDraft, clubId: number): AthleteCreateDto {
+  return { ClubID: clubId, AthleteName: draft.name, AthleteEPC: Number.parseInt(draft.epc, 16), Enabled: true }
+}
 function toDto(profile: AthleteProfile, clubId: number): AthleteDto {
   return { AthleteID: profile.id, ClubID: clubId, AthleteName: profile.name,
     AthleteEPC: Number.parseInt(profile.epc, 16), Enabled: profile.status === 'active' }

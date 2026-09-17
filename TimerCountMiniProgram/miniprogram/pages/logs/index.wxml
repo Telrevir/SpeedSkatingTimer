@@ -1,21 +1,87 @@
 <view class="page">
-  <view class="toolbar">
-    <view>
-      <text class="title">接收日志</text>
-      <text class="count">{{logs.length}} / {{capacity}} 条</text>
-    </view>
-    <button class="clear-button" size="mini" disabled="{{!logs.length}}" bindtap="clearLogs">清空</button>
+  <view class="debug-toolbar">
+    <text class="debug-title">调试</text>
+    <text class="debug-hint">仅供设备连接与排查使用</text>
   </view>
 
-  <view wx:if="{{logs.length}}" class="log-list">
-    <view class="log-entry" wx:for="{{logs}}" wx:key="id">
-      <text class="timestamp">{{item.timestamp}}</text>
-      <text class="packet" user-select="true">{{item.packetHex}}</text>
+  <view class="debug-list">
+    <view class="debug-card">
+      <view class="debug-head" bindtap="toggleLogs" hover-class="tree-head-active">
+        <view class="debug-title-row">
+          <text class="tree-arrow">{{logsExpanded ? '⌄' : '›'}}</text>
+          <text class="card-title">接收日志</text>
+        </view>
+        <text class="card-summary">{{logs.length}} / {{capacity}} 条</text>
+      </view>
+
+      <view wx:if="{{logsExpanded}}" class="debug-content">
+        <view class="content-toolbar">
+          <text>完整且校验有效的协议包</text>
+          <button class="clear-button" size="mini" disabled="{{!logs.length}}" bindtap="clearLogs">清空</button>
+        </view>
+        <view wx:if="{{logs.length}}" class="log-list">
+          <view class="log-entry" wx:for="{{logs}}" wx:key="id">
+            <text class="timestamp">{{item.timestamp}}</text>
+            <text class="packet" user-select="true">{{item.packetHex}}</text>
+          </view>
+        </view>
+        <view wx:else class="empty-inline">暂无接收日志</view>
+      </view>
+    </view>
+
+    <view class="debug-card">
+      <view class="debug-head" bindtap="toggleBluetooth" hover-class="tree-head-active">
+        <view class="debug-title-row">
+          <text class="tree-arrow">{{bluetoothExpanded ? '⌄' : '›'}}</text>
+          <text class="card-title">蓝牙配置</text>
+        </view>
+        <text class="card-summary">{{bluetoothStatus}}</text>
+      </view>
+
+      <view wx:if="{{bluetoothExpanded}}" class="debug-content bluetooth-content">
+        <view class="content-toolbar">
+          <text>本机保存的连接配置</text>
+          <button wx:if="{{!isConnected}}" class="connect-button" size="mini" loading="{{connecting}}" disabled="{{connecting}}" bindtap="connectDevice">手动连接</button>
+          <text wx:else class="connected-text">已连接</text>
+        </view>
+        <view class="config-note">启用或修改当前配置后，请断开现有连接再重新连接。</view>
+        <button class="add-button" size="mini" bindtap="openAdd">添加蓝牙配置</button>
+
+        <view class="profile-list">
+          <view wx:for="{{profiles}}" wx:key="id" class="profile-card {{item.isActive ? 'active-profile' : ''}}">
+            <view>
+              <text class="profile-name">{{item.name}}</text>
+              <text wx:if="{{item.isActive}}" class="active-badge">当前使用</text>
+            </view>
+            <text class="uuid-line">服务：{{item.serviceUuid}}</text>
+            <text class="uuid-line">写入：{{item.commandRxUuid}}</text>
+            <text class="uuid-line">通知：{{item.notificationTxUuid}}</text>
+            <view class="profile-actions">
+              <button wx:if="{{!item.isActive}}" size="mini" class="use-button" data-id="{{item.id}}" bindtap="activateProfile">使用</button>
+              <button size="mini" class="edit-button" data-id="{{item.id}}" bindtap="editProfile">修改</button>
+              <button size="mini" class="delete-button" data-id="{{item.id}}" bindtap="deleteProfile">删除</button>
+            </view>
+          </view>
+        </view>
+      </view>
     </view>
   </view>
 
-  <view wx:else class="empty">
-    <text class="empty-title">暂无接收日志</text>
-    <text>连接设备后，完整且校验有效的协议包会显示在这里。</text>
+  <view wx:if="{{formVisible}}" class="modal-mask">
+    <view class="editor">
+      <text class="editor-title">{{editingId ? '修改蓝牙配置' : '添加蓝牙配置'}}</text>
+      <text class="field-label">蓝牙名称</text>
+      <input class="form-input" value="{{form.name}}" data-field="name" placeholder="例如 ESP32-LORA-BRIDGE" maxlength="64" bindinput="updateField" />
+      <text class="field-label">服务 UUID</text>
+      <input class="form-input" value="{{form.serviceUuid}}" data-field="serviceUuid" placeholder="例如 FFE0 或完整 UUID" bindinput="updateField" />
+      <text class="field-label">写入 UUID</text>
+      <input class="form-input" value="{{form.commandRxUuid}}" data-field="commandRxUuid" placeholder="例如 FFE2 或完整 UUID" bindinput="updateField" />
+      <text class="field-label">通知 UUID</text>
+      <input class="form-input" value="{{form.notificationTxUuid}}" data-field="notificationTxUuid" placeholder="例如 FFE1 或完整 UUID" bindinput="updateField" />
+      <view class="editor-actions">
+        <button size="mini" bindtap="cancelEdit">取消</button>
+        <button size="mini" class="save-button" bindtap="saveProfile">{{editingId ? '保存修改' : '保存'}}</button>
+      </view>
+    </view>
   </view>
 </view>

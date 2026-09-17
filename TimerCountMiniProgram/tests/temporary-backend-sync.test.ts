@@ -1,12 +1,20 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createRequire } from 'node:module'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import {
   TemporaryBackendSync,
   createTemporaryBackendSync,
   type TemporarySyncSnapshot,
   type TemporarySyncRequest,
 } from '../miniprogram/services/temporary-backend-sync'
+
+test('temporary sync production delegates requests to BackendClient', () => {
+  const source = readFileSync(resolve(process.cwd(), 'miniprogram/services/temporary-backend-sync.ts'), 'utf8')
+  assert.doesNotMatch(source, /wx\.request/)
+  assert.match(source, /backendClient\.request/)
+})
 
 function snapshot(): TemporarySyncSnapshot {
   return {
@@ -59,7 +67,7 @@ async function withPlatform(
     runtime.wx = {
       getStorageSync: () => '',
       setStorageSync: () => { if (options.storageFailure) throw new Error('storage full') },
-      request: (request: {
+      cloud: { callContainer: (request: {
         fail?: (error: { errMsg: string }) => void
         success?: (response: { statusCode: number; data: unknown; header: object; cookies: string[]; errMsg: string }) => void
       }) => {
@@ -70,10 +78,10 @@ async function withPlatform(
         }
         request.success?.({
           statusCode: options.response === 'http' || (options.response === 'partial' && requests === 1) ? 409 : 200,
-          data: { code: options.response === 'business' ? 500 : 0 },
+          data: { code: options.response === 'business' ? 500 : 0, data: {} },
           header: {}, cookies: [], errMsg: 'request:ok',
         })
-      },
+      } },
       showModal: (modal: WechatMiniprogram.ShowModalOption) => {
         modals.push(modal)
         if (options.modalFailure) modal.fail?.({ errMsg: 'showModal:fail' })
@@ -227,8 +235,12 @@ test('temporary mapping storage failure cannot affect startup or local records',
 test('app launch and later shows never start the legacy upload and keep BLE available', async () => {
   const loadModule = createRequire(__filename)
   const f = fixture()
-  const runtime = globalThis as unknown as { App?: (hooks: { onLaunch?: () => void; onShow?: () => void }) => void }
+  const runtime = globalThis as unknown as {
+    App?: (hooks: { onLaunch?: () => void; onShow?: () => void }) => void
+    wx?: { cloud?: { init?: () => void } }
+  }
   const originalApp = runtime.App
+  const originalWx = runtime.wx
   const servicesPath = loadModule.resolve('../miniprogram/services/app-services')
   const appPath = loadModule.resolve('../miniprogram/app')
   const originalServices = loadModule.cache[servicesPath]
@@ -236,8 +248,10 @@ test('app launch and later shows never start the legacy upload and keep BLE avai
   let hooks: { onLaunch?: () => void; onShow?: () => void } = {}
   let bluetoothCalls = 0
   let wakeCalls = 0
+  let cloudInitCalls = 0
   try {
     runtime.App = (value) => { hooks = value }
+    runtime.wx = { cloud: { init: () => { cloudInitCalls += 1 } } }
     loadModule.cache[servicesPath] = { exports: {
       temporaryBackendSync: f.sync, startupSync: { runOnce: async () => ({ state: 'skipped' }) },
       raceController: { autoConnect: async () => { bluetoothCalls += 1 } },
@@ -246,6 +260,7 @@ test('app launch and later shows never start the legacy upload and keep BLE avai
     delete loadModule.cache[appPath]
     loadModule(appPath)
     assert.equal(hooks.onLaunch?.(), undefined)
+    assert.equal(cloudInitCalls, 1)
     hooks.onShow?.()
     hooks.onShow?.()
     await new Promise<void>((resolve) => setImmediate(resolve))
@@ -256,6 +271,7 @@ test('app launch and later shows never start the legacy upload and keep BLE avai
     assert.equal(wakeCalls, 2)
   } finally {
     runtime.App = originalApp
+    runtime.wx = originalWx
     if (originalServices) loadModule.cache[servicesPath] = originalServices
     else delete loadModule.cache[servicesPath]
     if (originalModule) loadModule.cache[appPath] = originalModule

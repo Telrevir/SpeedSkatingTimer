@@ -1,7 +1,7 @@
 import { BACKEND_CONFIG } from './config'
 
 export interface TransportRequest {
-  url: string
+  path: string
   method: 'GET' | 'POST' | 'PUT' | 'DELETE'
   header: Record<string, string>
   data?: object
@@ -9,6 +9,10 @@ export interface TransportRequest {
 }
 
 export type BackendTransport = (request: TransportRequest) => Promise<{ statusCode: number; data: unknown }>
+export interface BackendDiagnosticLogger {
+  info(message: string, details: Record<string, unknown>): void
+  warn(message: string, details: Record<string, unknown>): void
+}
 export interface RequestOptions {
   path: string
   method: TransportRequest['method']
@@ -25,33 +29,64 @@ export type ApiResult<T> = { ok: true; httpStatus: number; data: T } | {
 }
 
 export class BackendClient {
-  constructor(private readonly transport: BackendTransport = wechatRequest) {}
+  constructor(
+    private readonly transport: BackendTransport = cloudContainerRequest,
+    private readonly logger: BackendDiagnosticLogger = consoleDiagnosticLogger,
+    private readonly now: () => number = () => Date.now(),
+  ) {}
 
   async request<T>(options: RequestOptions): Promise<ApiResult<T>> {
+    const startedAt = this.now()
     try {
       const query = Object.entries(options.query ?? {})
         .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`).join('&')
+      const path = `${options.path}${query ? `?${query}` : ''}`
+      this.logger.info('[Backend] 请求发起', requestDetails(this.now(), options.method, path, { timeoutMs: BACKEND_CONFIG.timeoutMs }))
+      const containerPath = `${BACKEND_CONFIG.apiBasePath}${path.startsWith('/') ? path : `/${path}`}`
       const response = await this.transport({
-        url: `${BACKEND_CONFIG.baseUrl}${options.path}${query ? `?${query}` : ''}`,
+        path: containerPath,
         method: options.method,
         header: { 'Content-Type': 'application/json', Accept: 'application/json' },
         ...(options.data === undefined ? {} : { data: options.data }),
         timeout: BACKEND_CONFIG.timeoutMs,
       })
-      return parseResponse<T>(response.statusCode, response.data)
+      const result = parseResponse<T>(response.statusCode, response.data)
+      const details = requestDetails(this.now(), options.method, path, { elapsedMs: this.now() - startedAt })
+      if (result.ok) this.logger.info('[Backend] 请求成功', { ...details, httpStatus: response.statusCode })
+      else this.logger.warn('[Backend] 请求失败', { ...details, httpStatus: response.statusCode, kind: result.kind, message: result.message })
+      return result
     } catch {
       // 返回状态供上层决定提示策略；不自动重试、弹窗、写本地或记录响应正文。
-      return { ok: false, kind: 'network', message: '网络请求失败或超时' }
+      const result: ApiResult<never> = { ok: false, kind: 'network', message: '网络请求失败或超时' }
+      this.logger.warn('[Backend] 请求失败', requestDetails(this.now(), options.method, options.path, {
+        elapsedMs: this.now() - startedAt, kind: result.kind, message: result.message,
+      }))
+      return result
     }
   }
 }
 
-function wechatRequest(request: TransportRequest): ReturnType<BackendTransport> {
+const consoleDiagnosticLogger: BackendDiagnosticLogger = {
+  info: (message, details) => console.info(message, details),
+  warn: (message, details) => console.warn(message, details),
+}
+
+function requestDetails(timestamp: number, method: TransportRequest['method'], path: string, details: Record<string, unknown>): Record<string, unknown> {
+  return { timestamp: new Date(timestamp).toISOString(), method, path, ...details }
+}
+
+function cloudContainerRequest(request: TransportRequest): ReturnType<BackendTransport> {
   return new Promise((resolve, reject) => {
-    wx.request({
-      ...request,
+    wx.cloud.callContainer({
+      config: { env: BACKEND_CONFIG.cloudEnvId },
+      service: BACKEND_CONFIG.cloudService,
+      path: request.path,
+      method: request.method,
+      header: request.header,
+      ...(request.data === undefined ? {} : { data: request.data }),
+      timeout: request.timeout,
       success: (response) => resolve({ statusCode: response.statusCode, data: response.data }),
-      fail: () => reject(new Error('backend-network')),
+      fail: () => reject(new Error('cloud-container-network')),
     })
   })
 }

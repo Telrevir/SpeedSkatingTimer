@@ -111,7 +111,7 @@ function toCatalog(rows: AthleteDto[], timestamp: number, clubId: number): Athle
   const ids = new Set<number>()
   const epcs = new Set<number>()
   const athletes: AthleteProfile[] = rows.map((row) => {
-    if (!validId(row.AthleteID, 65535) || row.ClubID !== clubId
+    if (!validId(row.AthleteID, Number.MAX_SAFE_INTEGER) || row.ClubID !== clubId
       || !Number.isInteger(row.AthleteEPC) || row.AthleteEPC < 0 || row.AthleteEPC > 0xffffffff
       || typeof row.AthleteName !== 'string' || !row.AthleteName.trim() || typeof row.Enabled !== 'boolean') {
       throw new Error('服务器运动员数据无效')
@@ -152,7 +152,7 @@ function toGroups(rows: GroupDto[], forms: GroupMemberDto[], athleteIds: Set<num
   const formIds = new Set<number>()
   forms.forEach((form) => {
     if (!validId(form.AthleteGroupFormID ?? 0, Number.MAX_SAFE_INTEGER) || !validId(form.AthleteGroupID, 0x7fffffff)
-      || !validId(form.AthleteID, 65535) || !groupIds.has(form.AthleteGroupID)
+      || !validId(form.AthleteID, Number.MAX_SAFE_INTEGER) || !groupIds.has(form.AthleteGroupID)
       || typeof form.Enabled !== 'boolean' || formIds.has(form.AthleteGroupFormID!)) {
       throw new Error('服务器分组成员数据无效')
     }

@@ -53,11 +53,11 @@ test('page failure preserves the complete previous club cache', async () => {
   const athletes = localCatalog()
   const groups = new GroupStore(new Storage(), () => 1000)
   const client = new BackendClient(async (request: TransportRequest) => {
-    if (request.url.includes('/athletes') && request.url.includes('page=1')) {
+    if (request.path.includes('/athletes') && request.path.includes('page=1')) {
       return response({ list: [athlete(2)], page: 1, pageSize: 1, total: 2 })
     }
-    if (request.url.includes('/athletes') && request.url.includes('page=2')) throw new Error('offline')
-    throw new Error(`unexpected ${request.url}`)
+    if (request.path.includes('/athletes') && request.path.includes('page=2')) throw new Error('offline')
+    throw new Error(`unexpected ${request.path}`)
   })
   const sync = new CatalogCacheSync({ clubId: 1, cache, athleteCatalog: athletes, groupStore: groups, client })
 
@@ -77,10 +77,10 @@ test('successful refresh swaps athletes and groups in one publication', async ()
   const observed: Array<[number, number]> = []
   athletes.subscribe((active, archived) => observed.push([active.length, archived.length]))
   const client = new BackendClient(async (request: TransportRequest) => {
-    if (request.url.includes('/athletes')) return response({ list: [athlete(1), athlete(2, false)], page: 1, pageSize: 200, total: 2 })
-    if (request.url.includes('/athlete-groups')) return response({ list: [group(7)], page: 1, pageSize: 200, total: 1 })
-    if (request.url.includes('/athlete-group-forms')) return response({ list: [member(10, 7, 1), member(11, 7, 2)], page: 1, pageSize: 200, total: 2 })
-    throw new Error(`unexpected ${request.url}`)
+    if (request.path.includes('/athletes')) return response({ list: [athlete(1), athlete(2, false)], page: 1, pageSize: 200, total: 2 })
+    if (request.path.includes('/athlete-groups')) return response({ list: [group(7)], page: 1, pageSize: 200, total: 1 })
+    if (request.path.includes('/athlete-group-forms')) return response({ list: [member(10, 7, 1), member(11, 7, 2)], page: 1, pageSize: 200, total: 2 })
+    throw new Error(`unexpected ${request.path}`)
   })
   const sync = new CatalogCacheSync({ clubId: 1, cache, athleteCatalog: athletes, groupStore: groups, client, now: () => 2000 })
 

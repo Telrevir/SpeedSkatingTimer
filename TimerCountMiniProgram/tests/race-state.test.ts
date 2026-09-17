@@ -11,13 +11,13 @@ import {
 
 test('shows the connect button only while disconnected and uses current connection text', () => {
   assert.deepEqual(getConnectionPresentation(ConnectionState.Disconnected, AutoConnectState.Idle), {
-    connectionText: '未连接 ESP32-LORA-BRIDGE',
+    connectionText: '未连接 SKATING-TIMER',
     showConnectButton: true,
     autoConnecting: false,
     connectButtonText: '连接',
   })
   assert.deepEqual(getConnectionPresentation(ConnectionState.Connected, AutoConnectState.Connected), {
-    connectionText: '已自动连接 ESP32-LORA-BRIDGE',
+    connectionText: '已自动连接 SKATING-TIMER',
     showConnectButton: false,
     autoConnecting: false,
     connectButtonText: '连接',
@@ -26,19 +26,19 @@ test('shows the connect button only while disconnected and uses current connecti
 
 test('shows automatic discovery and not-found states without hiding manual retry', () => {
   assert.deepEqual(getConnectionPresentation(ConnectionState.Disconnected, AutoConnectState.Searching), {
-    connectionText: '正在自动查找 ESP32-LORA-BRIDGE',
+    connectionText: '正在自动查找 SKATING-TIMER',
     showConnectButton: true,
     autoConnecting: true,
     connectButtonText: '正在查找',
   })
   assert.deepEqual(getConnectionPresentation(ConnectionState.Disconnected, AutoConnectState.NotFound), {
-    connectionText: '本轮未找到 ESP32-LORA-BRIDGE，可手动连接',
+    connectionText: '本轮未找到 SKATING-TIMER，可手动连接',
     showConnectButton: true,
     autoConnecting: false,
     connectButtonText: '连接',
   })
   assert.deepEqual(getConnectionPresentation(ConnectionState.Connected, AutoConnectState.Idle), {
-    connectionText: '已连接 ESP32-LORA-BRIDGE',
+    connectionText: '已连接 SKATING-TIMER',
     showConnectButton: false,
     autoConnecting: false,
     connectButtonText: '连接',

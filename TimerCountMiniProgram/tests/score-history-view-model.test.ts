@@ -78,6 +78,20 @@ test('applies independent race and lap expansion state to the tree', () => {
   assert.equal(tree[0]!.laps[1]!.expandKey, 'race-3-lap-2')
 })
 
+test('marks locally retained races that have not synchronized successfully', () => {
+  const record = {
+    id: 'race-local-only',
+    startedAt: 1000,
+    finishedAt: null,
+    syncState: 'offline',
+    scores: [score(1, '甲', 1, 3000, 3000, 1)],
+  } as RaceRecord & { syncState: 'offline' }
+
+  const viewModel = buildRaceHistoryViewModel(record) as ReturnType<typeof buildRaceHistoryViewModel> & { uploadPending: boolean }
+
+  assert.equal(viewModel.uploadPending, true)
+})
+
 function score(
   athleteId: number,
   name: string,

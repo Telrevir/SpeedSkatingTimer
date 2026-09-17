@@ -11,7 +11,7 @@ export interface AthleteIdAllocator {
 
 export class MonotonicAthleteIdAllocator implements AthleteIdAllocator {
   allocate(catalog: AthleteCatalog): number {
-    if (catalog.nextId > 65535) throw new Error('运动员 ID 已耗尽')
+    if (!Number.isSafeInteger(catalog.nextId) || catalog.nextId < 1) throw new Error('运动员 ID 已耗尽')
     return catalog.nextId
   }
 }
@@ -65,7 +65,7 @@ export class AthleteCatalogService {
   }
 
   lookupActiveById(id: number): AthleteProfile | null {
-    if (!Number.isInteger(id) || id <= 0 || id > 0xffff) return null
+    if (!Number.isSafeInteger(id) || id <= 0) return null
     const athlete = this.catalog.athletes.find((candidate) => (
       candidate.id === id && candidate.status === 'active'
     ))
@@ -100,7 +100,7 @@ export class AthleteCatalogService {
     return this.enqueue(() => {
       // 同步等待期间本地可能变化，必须在现有写队列内部再次检查。
       if (!canImport()) return false
-      if (!profile || !Number.isInteger(profile.id) || profile.id < 1 || profile.id > 65535
+      if (!profile || !Number.isSafeInteger(profile.id) || profile.id < 1
         || (profile.status !== 'active' && profile.status !== 'archived')
         || !Number.isFinite(profile.createdAt) || !Number.isFinite(profile.updatedAt)
         || (profile.archivedAt !== null && !Number.isFinite(profile.archivedAt))) {

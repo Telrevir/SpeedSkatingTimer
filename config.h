@@ -1,6 +1,16 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#include <stdint.h>
+
+enum class ScoringMode : uint8_t {
+  LegacyImmediate,
+  RssiPeak
+};
+
+constexpr ScoringMode ACTIVE_SCORING_MODE = ScoringMode::RssiPeak;
+constexpr uint32_t RSSI_PEAK_WINDOW_MS = 300UL;
+
 // RFID serial wiring: RFID TX -> STM32 PC7, RFID RX -> STM32 PC6.
 #define RFID_SERIAL_RX PC7
 #define RFID_SERIAL_TX PC6

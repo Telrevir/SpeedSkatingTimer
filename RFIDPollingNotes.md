@@ -14,7 +14,7 @@
 
 ```cpp
 rfidReader.startInventory();
-rfidReader.receiveTag();
+rfidReader.poll();
 ```
 
 使用位置：
@@ -24,7 +24,7 @@ rfidReader.receiveTag();
 - 串口 `START`
 - 串口 `SCAN`
 
-主循环中，`receiveTag()` 会主动发送单次盘点指令，并读取 RFID 模块返回的数据帧。
+主循环中，`poll()` 会主动发送单次盘点指令，并读取 RFID 模块返回的数据帧。
 
 
 
@@ -34,26 +34,28 @@ rfidReader.receiveTag();
 
 ```cpp
 RFIDReader::startInventory()
-RFIDReader::receiveTag()
+RFIDReader::poll()
 ```
 
 当前含义：
 
 1. `startInventory()` 在进入比赛或扫描模式时激活 RFID 读取状态。
-2. `receiveTag()` 在主循环中执行。
-3. `receiveTag()` 内部主动发送单次盘点指令。
+2. `poll()` 在主循环中执行。
+3. `poll()` 内部主动发送单次盘点指令。
 4. RFID 模块返回当前扫描到的标签数据。
-5. STM32 解析响应帧，将 EPC 放入队列。
-6. 主流程再通过 `readTagEvent()` 取出 EPC 并调用 `processDetectedTag()`。
+5. STM32在完整帧校验成功时解析为`RfidTagEvent`，将EPC、`byte5`的有符号RSSI和该时刻`millis()`放入队列。
+6. 主流程通过`readTagEvent()`取出事件并调用`processTagEvent()`。
 
 当前业务处理仍保留在主循环中执行：
 
 ```cpp
-processDetectedTag(epc);
+processTagEvent(tagEvent);
 ```
 
-原因是 `processDetectedTag()` 包含串口输出、计时逻辑、LoRa 发送等较重操作，不适合放入串口接收事件或中断上下文中运行。
+原因是 `processTagEvent()` 包含串口输出、计时逻辑、LoRa 发送等较重操作，不适合放入串口接收事件或中断上下文中运行。
 
+
+默认`RssiPeak`模式下，已定义运动员不立即计分：主循环按EPC在300ms窗口内保留RSSI最高的事件，到期后以该事件的接收时间交给`DetectionController`。普通EPC和黑名单仍立即处理；`LegacyImmediate`模式则让全部事件沿用原即时计分路径。
 
 
 ## 多次轮询备用路径
@@ -87,7 +89,7 @@ STM32 Arduino Core 不支持 ESP32 风格的 `HardwareSerial::onReceive()` 用�
 当前项目采用主循环读取 RFID 数据的方式：
 
 ```cpp
-rfidReader.receiveTag();
+rfidReader.poll();
 ```
 
 主循环读取逻辑只做轻量处理：
@@ -95,7 +97,7 @@ rfidReader.receiveTag();
 1. 发送或读取 RFID 轮询数据。
 2. 组装完整帧。
 3. 调用帧解析逻辑。
-4. 将 EPC 放入队列。
+4. 将`RfidTagEvent`放入队列。
 
 业务处理仍然留在主循环中执行，避免在串口接收路径中执行复杂逻辑。
 
@@ -109,7 +111,7 @@ rfidReader.receiveTag();
 
 ```cpp
 rfidReader.startInventory();
-rfidReader.receiveTag();
+rfidReader.poll();
 ```
 
 不要在未重新确认前将主流程恢复为：

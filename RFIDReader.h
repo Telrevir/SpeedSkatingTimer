@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <HardwareSerial.h>
 #include "config.h"
+#include "RfidTagEvent.h"
 
 enum class RfidError : uint8_t {
   None,
@@ -22,7 +23,7 @@ private:
   uint8_t frame_[FRAME_CAPACITY];
   uint16_t frameLength_;
   uint16_t expectedLength_;
-  uint32_t queue_[QUEUE_CAPACITY];
+  RfidTagEvent queue_[QUEUE_CAPACITY];
   uint8_t queueRead_;
   uint8_t queueWrite_;
   uint8_t queueCount_;
@@ -45,12 +46,12 @@ private:
     }
   }
 
-  bool enqueue(uint32_t epc) {
+  bool enqueue(const RfidTagEvent& event) {
     if (queueCount_ >= QUEUE_CAPACITY) {
       queueOverflowed_ = true;
       return false;
     }
-    queue_[queueWrite_] = epc;
+    queue_[queueWrite_] = event;
     queueWrite_ = (queueWrite_ + 1) % QUEUE_CAPACITY;
     ++queueCount_;
     return true;
@@ -74,7 +75,12 @@ private:
                    (static_cast<uint32_t>(frame_[9]) << 16) |
                    (static_cast<uint32_t>(frame_[10]) << 8) |
                    static_cast<uint32_t>(frame_[11]);
-    enqueue(epc);
+    RfidTagEvent event = {
+      epc,
+      static_cast<int8_t>(frame_[5]),
+      millis()
+    };
+    enqueue(event);
   }
 
   void consumeByte(uint8_t value) {
@@ -192,9 +198,9 @@ public:
     readResponse();
   }
 
-  bool readEpc(uint32_t& epc) {
+  bool readTagEvent(RfidTagEvent& event) {
     if (queueCount_ == 0) return false;
-    epc = queue_[queueRead_];
+    event = queue_[queueRead_];
     queueRead_ = (queueRead_ + 1) % QUEUE_CAPACITY;
     --queueCount_;
     return true;

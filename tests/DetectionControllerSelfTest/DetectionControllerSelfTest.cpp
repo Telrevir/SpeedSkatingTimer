@@ -1,6 +1,8 @@
 #include <assert.h>
 #include <stdint.h>
 #include "../../DetectionController.h"
+#include "../../RfidTagEvent.h"
+#include "../../RssiScoringController.h"
 
 int main() {
   DetectionController controller;
@@ -89,6 +91,28 @@ int main() {
          DefineResult::AthleteDefined);
   assert(info.lapCentiseconds == 0);
   assert(info.totalCentiseconds == 0);
+
+  // RSSI模块只选择计分时刻，最终成绩仍由DetectionController计算。
+  DetectionController rssiController;
+  assert(rssiController.start(0) == DetectResult::Accepted);
+  assert(rssiController.defineEpc(true, 0x55555555UL, 5, 0, info) ==
+         DefineResult::AthleteDefined);
+  assert(rssiController.isAthleteEpc(0x55555555UL));
+  assert(!rssiController.isAthleteEpc(0x99999999UL));
+
+  RssiScoringController scorer(300);
+  RssiScoreSelection selection{};
+  assert(scorer.accept({0x55555555UL, -70, 8000}, selection) ==
+         RssiAcceptResult::Stored);
+  assert(scorer.accept({0x55555555UL, -40, 8120}, selection) ==
+         RssiAcceptResult::Stored);
+  assert(scorer.takeExpired(8300, selection));
+  EpcEvent rssiLap = rssiController.evaluateEpc(selection.epc,
+                                                 selection.detectedMs);
+  assert(rssiLap.type == EpcEventType::Athlete);
+  assert(rssiLap.athlete.lapCount == 1);
+  assert(rssiLap.athlete.lapCentiseconds == 812);
+  assert(rssiLap.athlete.totalCentiseconds == 812);
 
   return 0;
 }

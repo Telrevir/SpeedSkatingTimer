@@ -132,6 +132,13 @@ public:
   bool isRunning() const { return running_; }
   bool isAthleteClockRunning() const { return athleteClockStarted_; }
 
+  bool isAthleteEpc(uint32_t epc) const {
+    for (size_t i = 0; i < LIST_CAPACITY; ++i) {
+      if (athletes_[i].enabled && athletes_[i].epc == epc) return true;
+    }
+    return false;
+  }
+
   DetectResult start(uint32_t nowMs) {
     if (running_) return DetectResult::StateNotAllowed;
     (void)nowMs;

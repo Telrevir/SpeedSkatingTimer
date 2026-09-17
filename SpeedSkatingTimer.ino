@@ -3,10 +3,12 @@
 #include "DetectionController.h"
 #include "LoraManager.h"
 #include "RFIDReader.h"
+#include "RssiScoringController.h"
 
 DetectionController detectionController;
 LoraManager loraManager;
 RFIDReader rfidReader;
+RssiScoringController rssiScoringController(RSSI_PEAK_WINDOW_MS);
 
 void printEpc(uint32_t epc) {
   if (epc < 0x10000000UL) Serial.print('0');
@@ -123,6 +125,7 @@ void handleDetectCommand(uint8_t commandId, const uint8_t* payload,
     }
 
     rfidReader.clearQueue();
+    rssiScoringController.clear();
     if (!rfidReader.startInventory()) {
       sendStatus(commandId, DetectProtocol::STATUS_RFID_START_FAILED,
                  "开始检测失败：RFID启动失败");
@@ -145,6 +148,7 @@ void handleDetectCommand(uint8_t commandId, const uint8_t* payload,
       return;
     }
     detectionController.stop();
+    rssiScoringController.clear();
     rfidReader.clearQueue();
     sendStatus(commandId, DetectProtocol::STATUS_SUCCESS, "结束检测成功");
     return;
@@ -165,8 +169,8 @@ void handleDetectCommand(uint8_t commandId, const uint8_t* payload,
   sendAllAthletes();
 }
 
-void processDetectedEpc(uint32_t epc) {
-  EpcEvent event = detectionController.evaluateEpc(epc, millis());
+void processScoredEpc(uint32_t epc, uint32_t scoringMs) {
+  EpcEvent event = detectionController.evaluateEpc(epc, scoringMs);
   if (event.type == EpcEventType::Ignored ||
       event.type == EpcEventType::StateNotAllowed) {
     return;  // 8秒重复和黑名单命中完全静默。
@@ -205,6 +209,48 @@ void processDetectedEpc(uint32_t epc) {
   Serial.println();
 }
 
+void processRssiSelection(const RssiScoreSelection& selection) {
+  Serial.print("[RSSI] EPC=");
+  printEpc(selection.epc);
+  Serial.print("，最强信号=");
+  Serial.print(selection.rssiDbm);
+  Serial.print("dBm，计分时刻=");
+  Serial.println(selection.detectedMs);
+  processScoredEpc(selection.epc, selection.detectedMs);
+}
+
+void flushRssiSelections(uint32_t nowMs) {
+  RssiScoreSelection selection{};
+  while (rssiScoringController.takeExpired(nowMs, selection)) {
+    processRssiSelection(selection);
+  }
+}
+
+void processTagEvent(const RfidTagEvent& event) {
+  if (ACTIVE_SCORING_MODE == ScoringMode::LegacyImmediate) {
+    processScoredEpc(event.epc, millis());
+    return;
+  }
+
+  if (!detectionController.isAthleteEpc(event.epc)) {
+    processScoredEpc(event.epc, event.detectedMs);
+    return;
+  }
+
+  RssiScoreSelection expiredSelection{};
+  RssiAcceptResult result = rssiScoringController.accept(event,
+                                                          expiredSelection);
+  if (result == RssiAcceptResult::ExpiredSelection) {
+    processRssiSelection(expiredSelection);
+    return;
+  }
+  if (result == RssiAcceptResult::TableFull) {
+    sendStatus(DetectProtocol::CMD_EPC,
+               DetectProtocol::STATUS_QUEUE_OVERFLOW,
+               "EPC处理失败：RSSI候选窗口已满");
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   delay(2000);
@@ -220,9 +266,15 @@ void loop() {
 
   if (detectionController.isRunning()) {
     rfidReader.poll();
-    uint32_t epc;
-    for (uint8_t i = 0; i < 4 && rfidReader.readEpc(epc); ++i) {
-      processDetectedEpc(epc);
+    if (ACTIVE_SCORING_MODE == ScoringMode::RssiPeak) {
+      flushRssiSelections(millis());
+    }
+    RfidTagEvent tagEvent{};
+    for (uint8_t i = 0; i < 4 && rfidReader.readTagEvent(tagEvent); ++i) {
+      processTagEvent(tagEvent);
+    }
+    if (ACTIVE_SCORING_MODE == ScoringMode::RssiPeak) {
+      flushRssiSelections(millis());
     }
     if (rfidReader.takeQueueOverflow()) {
       sendStatus(DetectProtocol::CMD_EPC,

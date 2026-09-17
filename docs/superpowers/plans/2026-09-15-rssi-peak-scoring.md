@@ -37,7 +37,7 @@
 - Produces: `bool RFIDReader::readTagEvent(RfidTagEvent& event);`
 - Consumes: 单次轮询通知帧，RSSI 为 `frame[5]`，EPC 为 `frame[8]` 至 `frame[11]`。
 
-- [ ] **Step 1: 先写事件类型的编译期使用测试**
+- [x] **Step 1: 先写事件类型的编译期使用测试**
 
 ```cpp
 RfidTagEvent weak{0x11111111UL, -70, 1000};
@@ -46,7 +46,7 @@ assert(weak.rssiDbm < strong.rssiDbm);
 assert(strong.detectedMs == 1100);
 ```
 
-- [ ] **Step 2: 创建共享事件头文件并将 EPC 队列改为读取事件队列**
+- [x] **Step 2: 创建共享事件头文件并将 EPC 队列改为读取事件队列**
 
 在 `RfidTagEvent.h` 中只包含 `stdint.h` 并定义事件类型。RFIDReader 和后续 RssiScoringController 都包含该头文件；不得让主机自测包含 `Arduino.h` 或 `HardwareSerial.h`。
 
@@ -63,7 +63,7 @@ enqueue(event);
 
 以 `readTagEvent(RfidTagEvent&)` 替代 `readEpc(uint32_t&)`。不得在 RFIDReader 中加入运动员查询、窗口管理或 LoRa 发送。
 
-- [ ] **Step 3: 更新主循环读取类型**
+- [x] **Step 3: 更新主循环读取类型**
 
 将 `uint32_t epc` 和 `readEpc(epc)` 改为 `RfidTagEvent tagEvent` 和 `readTagEvent(tagEvent)`，临时调用后续任务实现的 `processTagEvent(tagEvent)`。
 
@@ -100,7 +100,7 @@ git commit -m "feat: retain RFID RSSI with tag events"
 - Produces: `bool RssiScoringController::takeExpired(uint32_t nowMs, RssiScoreSelection& selection);`
 - Produces: `void RssiScoringController::clear();`
 
-- [ ] **Step 1: 写失败的窗口行为测试**
+- [x] **Step 1: 写失败的窗口行为测试**
 
 ```cpp
 RssiScoringController scorer(300);
@@ -118,7 +118,7 @@ assert(selection.detectedMs == 1120);
 
 同一文件还需覆盖：RSSI 相同时保留较早时间；不同 EPC 独立结算；事件间隔正好 300ms 时返回旧窗口并开始新窗口；`uint32_t` 回绕；`clear()` 后无可结算结果。
 
-- [ ] **Step 2: 确认测试在模块缺失时失败**
+- [x] **Step 2: 确认测试在模块缺失时失败**
 
 Run:
 
@@ -129,7 +129,7 @@ tests/RssiScoringControllerSelfTest/RssiScoringControllerSelfTest.exe
 
 Expected: 编译失败，提示缺少 `RssiScoringController.h` 或相关类型。
 
-- [ ] **Step 3: 实现固定数组窗口**
+- [x] **Step 3: 实现固定数组窗口**
 
 在新头文件中使用 50 项固定数组，每项保存 `enabled`、`epc`、`windowStartedMs`、`bestRssiDbm` 和 `bestDetectedMs`。信号更强时更新最佳样本：
 
@@ -142,7 +142,7 @@ if (event.rssiDbm > entry.bestRssiDbm) {
 
 信号相等时不覆盖，从而保留先到样本。所有窗口到期判断使用无符号减法 `nowMs - entry.windowStartedMs >= windowMs_`。没有空槽时 `accept()` 返回 `RssiAcceptResult::TableFull`，调用方映射为既有 `STATUS_QUEUE_OVERFLOW`，不得覆盖任意窗口。`ExpiredSelection` 表示已在 `expired` 写入旧窗口结果且当前事件已开始新窗口。
 
-- [ ] **Step 4: 运行窗口自测**
+- [x] **Step 4: 运行窗口自测**
 
 Run:
 
@@ -178,7 +178,7 @@ git commit -m "feat: add RSSI peak scoring windows"
 - Produces: `bool DetectionController::isAthleteEpc(uint32_t epc) const;`
 - Consumes: `RssiScoreSelection`，通过既有 `evaluateEpc(epc, selectedMs)` 提交选中的时间。
 
-- [ ] **Step 1: 写峰值时间不等于结算时间的失败测试**
+- [x] **Step 1: 写峰值时间不等于结算时间的失败测试**
 
 ```cpp
 assert(controller.isAthleteEpc(0x11111111UL));
@@ -189,11 +189,11 @@ assert(event.athlete.totalCentiseconds == expectedCentisecondsAt10120);
 
 测试必须模拟窗口在 `10300ms` 结算，但选中峰值读数在 `10120ms` 到达；总时长和单圈时长必须以 `10120ms` 为准。
 
-- [ ] **Step 2: 添加配置开关和只读运动员查询**
+- [x] **Step 2: 添加配置开关和只读运动员查询**
 
 在 `config.h` 增加两个模式、默认 `RssiPeak` 与 `RSSI_PEAK_WINDOW_MS = 300UL`。在 DetectionController 增加只遍历 `athletes_` 的 `isAthleteEpc()`；它不得写入 `lastDetectedMs`、成绩表或普通 EPC 表。
 
-- [ ] **Step 3: 重构为统一提交入口并按模式分派**
+- [x] **Step 3: 重构为统一提交入口并按模式分派**
 
 将 `processDetectedEpc(uint32_t epc)` 拆为：
 
@@ -256,15 +256,15 @@ git commit -m "feat: select RSSI peak scoring by configuration"
 
 - Documents: RSSI `byte5`、300ms 选峰、两种配置模式、唯一成绩表和“无 LoRa 协议变更”的结论。
 
-- [ ] **Step 1: 更新架构与轮询说明**
+- [x] **Step 1: 更新架构与轮询说明**
 
 在 `ARCHITECTURE.md` 的模块和数据流中增加 RssiScoringController，明确它不持有成绩。修正 `RFIDPollingNotes.md` 中与实际代码不一致的函数名，使其使用 `poll()`、`readTagEvent()` 和 `processTagEvent()`，并记录 RSSI 提取位置与时间戳捕获点。
 
-- [ ] **Step 2: 更新任务和协议说明**
+- [x] **Step 2: 更新任务和协议说明**
 
 在 `CurrentTask.md` 登记实现状态。于 `LORAProtocol-byte.md` 说明 RSSI 峰值选择不改变 `0x12` 格式和返回条件；不得添加协议字段或命令。
 
-- [ ] **Step 3: 执行静态检查**
+- [x] **Step 3: 执行静态检查**
 
 Run:
 

@@ -194,6 +194,21 @@ public:
     return sendPacket(DetectProtocol::CMD_ATHLETE, payload, sizeof(payload));
   }
 
+  bool sendAthleteLapHistory(uint16_t athleteId, const uint8_t* records,
+                             uint8_t recordCount) {
+    uint8_t payload[3 + DetectProtocol::MAX_LAP_HISTORY_RECORDS *
+                    DetectProtocol::LAP_HISTORY_RECORD_SIZE] = {};
+    uint8_t payloadLength = DetectProtocol::buildAthleteLapHistoryPayload(
+      athleteId, records, recordCount, payload);
+    if (payloadLength == 0) {
+      Serial.println("[错误] 运动员近10圈历史Payload构建失败");
+      return false;
+    }
+    return sendPacket(DetectProtocol::CMD_ATHLETE_LAP_HISTORY,
+                      payload, payloadLength);
+  }
+
+
   bool sendAthleteTransfer(bool started) {
     uint8_t payload[1] = {static_cast<uint8_t>(started ? 0x01 : 0x00)};
     return sendPacket(DetectProtocol::CMD_ATHLETE_TRANSFER,

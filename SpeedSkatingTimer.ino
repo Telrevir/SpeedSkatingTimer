@@ -101,6 +101,30 @@ void sendAllAthletes() {
                  "发送运动员信息失败");
       break;
     }
+
+    uint8_t historyRecords[DetectProtocol::MAX_LAP_HISTORY_RECORDS *
+                           DetectProtocol::LAP_HISTORY_RECORD_SIZE] = {};
+    uint8_t historyCount = detectionController.athleteHistoryCount(slot);
+    bool historyReadFailed = false;
+    for (uint8_t index = 0; index < historyCount; ++index) {
+      AthleteLapHistoryRecord history{};
+      if (!detectionController.athleteHistoryAt(slot, index, history)) {
+        historyReadFailed = true;
+        break;
+      }
+      uint8_t* record = historyRecords +
+        index * DetectProtocol::LAP_HISTORY_RECORD_SIZE;
+      DetectProtocol::writeUInt16BE(record, history.lapCount);
+      DetectProtocol::writeUInt16BE(record + 2, history.rank);
+      DetectProtocol::writeUInt24BE(record + 4, history.totalCentiseconds);
+    }
+    if (historyReadFailed || !loraManager.sendAthleteLapHistory(
+          athlete.id, historyRecords, historyCount)) {
+      sendStatus(DetectProtocol::CMD_GET_ATHLETES,
+                 DetectProtocol::STATUS_LORA_SEND_FAILED,
+                 "发送运动员近10圈历史失败");
+      break;
+    }
   }
 
   if (!loraManager.sendAthleteTransfer(false)) {

@@ -14,6 +14,8 @@ int main() {
   static_assert(DetectProtocol::CMD_EPC == 0x14,
                 "EPC command changed");
 
+  static_assert(DetectProtocol::CMD_ATHLETE_LAP_HISTORY == 0x15,
+                "lap history command changed");
   uint8_t integerBytes[] = {0x12, 0x34, 0x56, 0x78};
   assert(DetectProtocol::readUInt16BE(integerBytes) == 0x1234);
   assert(DetectProtocol::readUInt32BE(integerBytes) == 0x12345678UL);
@@ -66,6 +68,34 @@ int main() {
                                       output, sizeof(output)) == 9);
   assert(output[1] == 0x14 && output[7] == 0xA8 && output[8] == 0xF9);
 
+  // 0x15按运动员ID、条数和原始7字节记录构建，不改变0x12格式。
+  uint8_t historyRecords[14] = {
+    0x00, 0x02, 0x00, 0x01, 0x00, 0x03, 0x20,
+    0x00, 0x03, 0x00, 0x02, 0x00, 0x06, 0x40
+  };
+  uint8_t historyPayload[73] = {};
+  assert(DetectProtocol::buildAthleteLapHistoryPayload(
+           1, historyRecords, 2, historyPayload) == 17);
+  assert(historyPayload[0] == 0x00 && historyPayload[1] == 0x01);
+  assert(historyPayload[2] == 0x02);
+  for (uint8_t i = 0; i < sizeof(historyRecords); ++i) {
+    assert(historyPayload[3 + i] == historyRecords[i]);
+  }
+  assert(DetectProtocol::buildAthleteLapHistoryPayload(
+           2, nullptr, 0, historyPayload) == 3);
+  assert(historyPayload[0] == 0x00 && historyPayload[1] == 0x02);
+  assert(historyPayload[2] == 0x00);
+  uint8_t tenHistoryRecords[70] = {};
+  for (uint8_t i = 0; i < sizeof(tenHistoryRecords); ++i) {
+    tenHistoryRecords[i] = i;
+  }
+  assert(DetectProtocol::buildAthleteLapHistoryPayload(
+           3, tenHistoryRecords, 10, historyPayload) == 73);
+  assert(DetectProtocol::buildAthleteLapHistoryPayload(
+           0, historyRecords, 2, historyPayload) == 0);
+  assert(DetectProtocol::buildAthleteLapHistoryPayload(
+           1, tenHistoryRecords, 11, historyPayload) == 0);
+
   assert(DetectProtocol::isAppCommand(0x01));
   assert(DetectProtocol::isAppCommand(0x02));
   assert(DetectProtocol::isAppCommand(0x03));
@@ -76,5 +106,6 @@ int main() {
   assert(!DetectProtocol::isAppCommand(0x13));
   assert(!DetectProtocol::isAppCommand(0x14));
   assert(!DetectProtocol::isAppCommand(0xF0));
+  assert(!DetectProtocol::isAppCommand(0x15));
   return 0;
 }

@@ -9,6 +9,8 @@ namespace DetectProtocol {
 static constexpr uint8_t PACKET_HEADER = 0xAA;
 static constexpr uint8_t PACKET_TAIL = 0xF9;
 static constexpr uint8_t MAX_PAYLOAD_LENGTH = 230;
+static constexpr uint8_t LAP_HISTORY_RECORD_SIZE = 7;
+static constexpr uint8_t MAX_LAP_HISTORY_RECORDS = 10;
 
 static constexpr uint8_t CMD_START = 0x01;
 static constexpr uint8_t CMD_STOP = 0x02;
@@ -19,6 +21,7 @@ static constexpr uint8_t CMD_GET_ATHLETES = 0x11;
 static constexpr uint8_t CMD_ATHLETE = 0x12;
 static constexpr uint8_t CMD_ATHLETE_TRANSFER = 0x13;
 static constexpr uint8_t CMD_EPC = 0x14;
+static constexpr uint8_t CMD_ATHLETE_LAP_HISTORY = 0x15;
 static constexpr uint8_t CMD_STATUS = 0xF0;
 
 static constexpr uint8_t STATUS_SUCCESS = 0x00;
@@ -117,6 +120,25 @@ inline void buildAthletePayload(uint16_t id, uint8_t lapCount,
   writeUInt24BE(output + 3, lapCentiseconds);
   writeUInt24BE(output + 6, totalCentiseconds);
 }
+inline uint8_t buildAthleteLapHistoryPayload(uint16_t athleteId,
+                                             const uint8_t* records,
+                                             uint8_t recordCount,
+                                             uint8_t* output) {
+  if (athleteId == 0 || recordCount > MAX_LAP_HISTORY_RECORDS ||
+      output == nullptr || (recordCount > 0 && records == nullptr)) {
+    return 0;
+  }
+
+  writeUInt16BE(output, athleteId);
+  output[2] = recordCount;
+  uint8_t payloadLength = static_cast<uint8_t>(
+    3 + recordCount * LAP_HISTORY_RECORD_SIZE);
+  for (uint8_t i = 0; i < recordCount * LAP_HISTORY_RECORD_SIZE; ++i) {
+    output[3 + i] = records[i];
+  }
+  return payloadLength;
+}
+
 
 inline void buildEpcPayload(uint32_t epc, uint8_t* output) {
   writeUInt32BE(output, epc);

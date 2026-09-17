@@ -8,10 +8,13 @@ import {
 } from '../domain/race-state'
 import {
   decodeAthleteTransferState,
+  decodeFirmwareAthleteLapHistory,
   decodeFirmwareAthleteScore,
   decodeOrdinaryEpc,
   encodeAthleteDefinition,
   type AthleteClassification,
+  type FirmwareAthleteLapHistory,
+  type FirmwareLapHistoryRecord,
 } from '../protocol/athlete-sync-codec'
 import { CommandId } from '../protocol/commands'
 import { encodePacket, LoraPacketDecoder, type LoraPacket } from '../protocol/lora-packet-codec'
@@ -53,6 +56,8 @@ export class RaceController {
   } | null = null
   private pendingAthleteTransfer: {
     started: boolean
+    histories: Map<number, FirmwareLapHistoryRecord[]>
+    historyInvalid: boolean
     resolve: () => void
     reject: (error: Error) => void
     timeoutId: ReturnType<typeof setTimeout>
@@ -357,6 +362,8 @@ export class RaceController {
     void completion.catch(() => undefined)
     let pending!: {
       started: boolean
+      histories: Map<number, FirmwareLapHistoryRecord[]>
+      historyInvalid: boolean
       resolve: () => void
       reject: (error: Error) => void
       timeoutId: ReturnType<typeof setTimeout>
@@ -368,6 +375,8 @@ export class RaceController {
     }, 10_000)
     pending = {
       started: false,
+      histories: new Map(),
+      historyInvalid: false,
       resolve: resolveTransfer,
       reject: rejectTransfer,
       timeoutId,
@@ -453,6 +462,10 @@ export class RaceController {
       this.handleAthleteInfo(packet.payload)
       return
     }
+    if (packet.commandId === CommandId.AthleteLapHistory) {
+      this.handleAthleteLapHistory(packet.payload)
+      return
+    }
     if (packet.commandId === CommandId.OrdinaryEpcDetected) {
       this.handleOrdinaryEpc(packet.payload)
       return
@@ -468,12 +481,53 @@ export class RaceController {
     if (!pending) return
     if (state === 'receiving') {
       pending.started = true
+      pending.histories.clear()
+      pending.historyInvalid = false
       return
     }
     if (!pending.started) return
     clearTimeout(pending.timeoutId)
     this.pendingAthleteTransfer = null
+    if (!pending.historyInvalid) {
+      this.raceStore.replaceFirmwareLapHistories(
+        [...pending.histories.entries()]
+          .sort(([leftId], [rightId]) => leftId - rightId)
+          .map(([athleteId, records]) => ({ athleteId, records })),
+      )
+    }
     pending.resolve()
+  }
+
+  private handleAthleteLapHistory(payload: Uint8Array): void {
+    const history = decodeFirmwareAthleteLapHistory(payload)
+    if (!history) {
+      this.recordInvalidAthleteLapHistory('0x15 Payload无效')
+      return
+    }
+    const pending = this.pendingAthleteTransfer
+    if (!pending || !pending.started) {
+      this.recordInvalidAthleteLapHistory('0x15不在运动员状态传输中')
+      return
+    }
+    const session = this.activeSessionRepository?.load()
+    if (!session) {
+      this.recordInvalidAthleteLapHistory('缺少本地比赛会话')
+      return
+    }
+    if (!session.participantIds.includes(history.athleteId)) {
+      this.recordInvalidAthleteLapHistory('0x15运动员不属于当前比赛')
+      return
+    }
+    if (pending.histories.has(history.athleteId)) {
+      this.recordInvalidAthleteLapHistory('0x15运动员历史重复')
+      return
+    }
+    pending.histories.set(history.athleteId, cloneFirmwareLapHistoryRecords(history))
+  }
+
+  private recordInvalidAthleteLapHistory(message: string): void {
+    if (this.pendingAthleteTransfer) this.pendingAthleteTransfer.historyInvalid = true
+    this.raceStore.setSyncError(message)
   }
 
   private handleAthleteInfo(payload: Uint8Array): void {
@@ -616,4 +670,10 @@ function commandStatusMessage(statusCode: number): string {
     case 0x0f: return 'RFID通信错误'
     default: return `设备返回错误状态 0x${statusCode.toString(16).padStart(2, '0').toUpperCase()}`
   }
+}
+
+function cloneFirmwareLapHistoryRecords(
+  history: FirmwareAthleteLapHistory,
+): FirmwareLapHistoryRecord[] {
+  return history.records.map((record) => ({ ...record }))
 }

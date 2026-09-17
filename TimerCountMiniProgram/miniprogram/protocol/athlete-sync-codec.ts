@@ -18,6 +18,17 @@ export interface FirmwareAthleteScore {
   lapCentiseconds: number
   totalCentiseconds: number
 }
+export interface FirmwareLapHistoryRecord {
+  lapCount: number
+  rank: number
+  totalCentiseconds: number
+}
+
+export interface FirmwareAthleteLapHistory {
+  athleteId: number
+  records: FirmwareLapHistoryRecord[]
+}
+
 
 export type AthleteTransferState = 'receiving' | 'idle'
 
@@ -47,6 +58,26 @@ export function decodeFirmwareAthleteScore(payload: Uint8Array): FirmwareAthlete
     lapCentiseconds: readUint24BE(payload, 3),
     totalCentiseconds: readUint24BE(payload, 6),
   }
+}
+
+export function decodeFirmwareAthleteLapHistory(payload: Uint8Array): FirmwareAthleteLapHistory | null {
+  if (payload.length < 3) return null
+  const athleteId = readUint16BE(payload, 0)
+  const recordCount = payload[2]!
+  if (athleteId === 0 || recordCount > 10 || payload.length !== 3 + recordCount * 7) {
+    return null
+  }
+
+  const records: FirmwareLapHistoryRecord[] = []
+  for (let index = 0; index < recordCount; index += 1) {
+    const offset = 3 + index * 7
+    records.push({
+      lapCount: readUint16BE(payload, offset),
+      rank: readUint16BE(payload, offset + 2),
+      totalCentiseconds: readUint24BE(payload, offset + 4),
+    })
+  }
+  return { athleteId, records }
 }
 
 export function decodeAthleteTransferState(payload: Uint8Array): AthleteTransferState | null {

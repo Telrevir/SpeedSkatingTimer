@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   decodeAthleteTransferState,
   decodeFirmwareAthleteScore,
+  decodeFirmwareAthleteLapHistory,
   decodeOrdinaryEpc,
   encodeAthleteDefinition,
 } from '../miniprogram/protocol/athlete-sync-codec'
@@ -45,6 +46,38 @@ test('decodes firmware athlete scores from fixed-width big-endian fields', () =>
   )
   assert.equal(decodeFirmwareAthleteScore(Uint8Array.of(0, 1, 2, 3, 4, 5)), null)
   assert.equal(decodeFirmwareAthleteScore(Uint8Array.of(0, 0, 2, 0, 3, 0x20, 1, 2, 3)), null)
+})
+
+test('decodes bounded athlete lap history from fixed-width big-endian records', () => {
+  assert.deepEqual(
+    decodeFirmwareAthleteLapHistory(Uint8Array.of(
+      0x00, 0x01, 0x02,
+      0x00, 0x02, 0x00, 0x03, 0x00, 0x03, 0x20,
+      0x00, 0x03, 0x00, 0x02, 0x00, 0x06, 0x40,
+    )),
+    {
+      athleteId: 1,
+      records: [
+        { lapCount: 2, rank: 3, totalCentiseconds: 800 },
+        { lapCount: 3, rank: 2, totalCentiseconds: 1600 },
+      ],
+    },
+  )
+  assert.deepEqual(
+    decodeFirmwareAthleteLapHistory(Uint8Array.of(0x00, 0x02, 0x00)),
+    { athleteId: 2, records: [] },
+  )
+  assert.equal(decodeFirmwareAthleteLapHistory(Uint8Array.of(0x00, 0x00, 0x00)), null)
+  assert.equal(decodeFirmwareAthleteLapHistory(Uint8Array.of(
+    0x00, 0x01, 0x0b,
+  )), null)
+  assert.equal(decodeFirmwareAthleteLapHistory(Uint8Array.of(
+    0x00, 0x01, 0x01,
+    0x00, 0x02, 0x00, 0x03,
+ )), null)
+  assert.equal(decodeFirmwareAthleteLapHistory(Uint8Array.of(
+    0x00, 0x01, 0x00, 0x00,
+ )), null)
 })
 
 test('decodes only documented athlete transfer states', () => {

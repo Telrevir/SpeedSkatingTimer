@@ -8,5 +8,6 @@ export enum CommandId {
   AthleteInfo = 0x12,
   AthleteTransferState = 0x13,
   OrdinaryEpcDetected = 0x14,
+  AthleteLapHistory = 0x15,
   CommandResult = 0xf0,
 }

@@ -1,5 +1,5 @@
 import type { LocalRacePhase } from '../domain/local-race-scoring'
-import type { AthleteTransferState } from '../protocol/athlete-sync-codec'
+import type { AthleteTransferState, FirmwareAthleteLapHistory } from '../protocol/athlete-sync-codec'
 import { AutoConnectState, ConnectionState, FirmwareDetectionState } from '../domain/race-state'
 
 export interface RaceSnapshot {
@@ -12,6 +12,7 @@ export interface RaceSnapshot {
   leaderLapCount: number | null
   leaderLapCentiseconds: number | null
   athleteTransferState: AthleteTransferState
+  firmwareLapHistories: FirmwareAthleteLapHistory[]
   syncError: string | null
 }
 
@@ -27,10 +28,11 @@ export class RaceStore {
     leaderLapCount: null,
     leaderLapCentiseconds: null,
     athleteTransferState: 'idle',
+    firmwareLapHistories: [],
     syncError: null,
   }
 
-  get snapshot(): RaceSnapshot { return { ...this.value } }
+  get snapshot(): RaceSnapshot { return cloneSnapshot(this.value) }
 
   setConnectionState(connectionState: ConnectionState): void {
     this.value = { ...this.value, connectionState }
@@ -52,6 +54,11 @@ export class RaceStore {
     this.notify()
   }
 
+  replaceFirmwareLapHistories(histories: readonly FirmwareAthleteLapHistory[]): void {
+    this.value = { ...this.value, firmwareLapHistories: cloneFirmwareLapHistories(histories) }
+    this.notify()
+  }
+
   setSyncError(syncError: string | null): void {
     this.value = { ...this.value, syncError }
     this.notify()
@@ -59,7 +66,8 @@ export class RaceStore {
 
   setRaceState(state: Omit<
     RaceSnapshot,
-    'connectionState' | 'autoConnectState' | 'firmwareState' | 'athleteTransferState' | 'syncError'
+    'connectionState' | 'autoConnectState' | 'firmwareState' | 'athleteTransferState'
+      | 'firmwareLapHistories' | 'syncError'
   >): void {
     this.value = { ...this.value, ...state }
     this.notify()
@@ -75,4 +83,20 @@ export class RaceStore {
     const snapshot = this.snapshot
     this.listeners.forEach((listener) => listener(snapshot))
   }
+}
+
+function cloneSnapshot(snapshot: RaceSnapshot): RaceSnapshot {
+  return {
+    ...snapshot,
+    firmwareLapHistories: cloneFirmwareLapHistories(snapshot.firmwareLapHistories),
+  }
+}
+
+function cloneFirmwareLapHistories(
+  histories: readonly FirmwareAthleteLapHistory[],
+): FirmwareAthleteLapHistory[] {
+  return histories.map((history) => ({
+    athleteId: history.athleteId,
+    records: history.records.map((record) => ({ ...record })),
+  }))
 }

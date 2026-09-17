@@ -193,6 +193,27 @@ function athleteInfoEvent(
   ))
 }
 
+function athleteLapHistoryEvent(
+  athleteId: number,
+  records: Array<{ lapCount: number; rank: number; totalCentiseconds: number }>,
+): Uint8Array {
+  const payload = new Uint8Array(3 + records.length * 7)
+  payload[0] = (athleteId >> 8) & 0xff
+  payload[1] = athleteId & 0xff
+  payload[2] = records.length
+  records.forEach((record, index) => {
+    const offset = 3 + index * 7
+    payload[offset] = (record.lapCount >> 8) & 0xff
+    payload[offset + 1] = record.lapCount & 0xff
+    payload[offset + 2] = (record.rank >> 8) & 0xff
+    payload[offset + 3] = record.rank & 0xff
+    payload[offset + 4] = (record.totalCentiseconds >> 16) & 0xff
+    payload[offset + 5] = (record.totalCentiseconds >> 8) & 0xff
+    payload[offset + 6] = record.totalCentiseconds & 0xff
+  })
+  return encodePacket(CommandId.AthleteLapHistory, payload)
+}
+
 function ordinaryEpcEvent(epc: number[]): Uint8Array {
   return encodePacket(CommandId.OrdinaryEpcDetected, Uint8Array.of(...epc))
 }
@@ -428,6 +449,73 @@ test('queries athlete state while detecting and waits for transfer end', async (
   assert.equal(controller.activeGroup?.id, group.id)
   assert.equal(controller.snapshot.athleteTransferState, 'idle')
   assert.equal(controller.snapshot.syncError, null)
+})
+
+test('atomically replaces recent lap histories at the end of a complete 0x13 transfer', async () => {
+  const { controller, transport } = await fixture()
+  const connecting = controller.connect()
+  await Promise.resolve()
+  transport.emit(encodePacket(CommandId.RaceState, Uint8Array.of(FirmwareDetectionState.Stopped)))
+  await connecting
+  await startRace(controller, transport)
+  const syncing = controller.syncForegroundState()
+  await Promise.resolve()
+  transport.emit(encodePacket(CommandId.RaceState, Uint8Array.of(FirmwareDetectionState.Detecting)))
+  await waitForSentCommand(transport, CommandId.GetAllAthletes)
+
+  transport.emit(encodePacket(CommandId.AthleteTransferState, Uint8Array.of(0x01)))
+  transport.emit(athleteLapHistoryEvent(1, [
+    { lapCount: 2, rank: 3, totalCentiseconds: 800 },
+    { lapCount: 3, rank: 2, totalCentiseconds: 1600 },
+  ]))
+
+  assert.deepEqual(controller.snapshot.firmwareLapHistories, [])
+
+  transport.emit(encodePacket(CommandId.AthleteTransferState, Uint8Array.of(0x00)))
+  await syncing
+
+  assert.deepEqual(controller.snapshot.firmwareLapHistories, [{
+    athleteId: 1,
+    records: [
+      { lapCount: 2, rank: 3, totalCentiseconds: 800 },
+      { lapCount: 3, rank: 2, totalCentiseconds: 1600 },
+    ],
+  }])
+})
+
+test('retains recent lap histories when a 0x15 transfer contains an invalid record', async () => {
+  const { controller, transport } = await fixture()
+  const connecting = controller.connect()
+  await Promise.resolve()
+  transport.emit(encodePacket(CommandId.RaceState, Uint8Array.of(FirmwareDetectionState.Stopped)))
+  await connecting
+  await startRace(controller, transport)
+  const firstSync = controller.syncForegroundState()
+  await Promise.resolve()
+  transport.emit(encodePacket(CommandId.RaceState, Uint8Array.of(FirmwareDetectionState.Detecting)))
+  await waitForSentCommand(transport, CommandId.GetAllAthletes)
+  transport.emit(encodePacket(CommandId.AthleteTransferState, Uint8Array.of(0x01)))
+  transport.emit(athleteLapHistoryEvent(1, [{ lapCount: 1, rank: 1, totalCentiseconds: 600 }]))
+  transport.emit(encodePacket(CommandId.AthleteTransferState, Uint8Array.of(0x00)))
+  await firstSync
+
+  const secondSync = controller.syncForegroundState()
+  await Promise.resolve()
+  transport.emit(encodePacket(CommandId.RaceState, Uint8Array.of(FirmwareDetectionState.Detecting)))
+  await waitForCondition(
+    () => transport.sent.filter((packet) => packet[1] === CommandId.GetAllAthletes).length === 2,
+    '第二次 0x11 未发送',
+  )
+  transport.emit(encodePacket(CommandId.AthleteTransferState, Uint8Array.of(0x01)))
+  transport.emit(encodePacket(CommandId.AthleteLapHistory, Uint8Array.of(0x00, 0x01, 0x01, 0x00)))
+  transport.emit(encodePacket(CommandId.AthleteTransferState, Uint8Array.of(0x00)))
+  await secondSync
+
+  assert.equal(controller.snapshot.syncError, '0x15 Payload无效')
+  assert.deepEqual(controller.snapshot.firmwareLapHistories, [{
+    athleteId: 1,
+    records: [{ lapCount: 1, rank: 1, totalCentiseconds: 600 }],
+  }])
 })
 
 test('coalesces concurrent foreground synchronization calls', async () => {

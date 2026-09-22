@@ -15,6 +15,7 @@ let unsubscribe: (() => void) | null = null
 let unsubscribeAthletes: (() => void) | null = null
 let unsubscribeGroups: (() => void) | null = null
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let refreshGroupPresentation: (() => void) | null = null
 
 Page({
   data: {
@@ -44,14 +45,14 @@ Page({
 
   onLoad() {
     unsubscribe = raceController.subscribe((snapshot) => this.renderSnapshot(snapshot))
-    const refreshGroupName = () => {
+    refreshGroupPresentation = () => {
       const active = groupStore.active
       const groupName = active?.name ?? '全部运动员'
       this.setData({ groupName })
       wx.setNavigationBarTitle({ title: getRaceNavigationTitle(groupName) })
     }
-    unsubscribeGroups = groupStore.subscribe(refreshGroupName)
-    refreshGroupName()
+    unsubscribeGroups = groupStore.subscribe(refreshGroupPresentation)
+    refreshGroupPresentation()
     unsubscribeAthletes = raceController.subscribeAthletes((athletes) => {
       const leader = athletes.find(({ id }) => id === raceController.snapshot.leaderAthleteId)
       const topFive = athletes
@@ -88,11 +89,13 @@ Page({
     unsubscribe = null
     unsubscribeAthletes = null
     unsubscribeGroups = null
+    refreshGroupPresentation = null
     if (pollTimer !== null) clearInterval(pollTimer)
     pollTimer = null
   },
 
   onShow() {
+    refreshGroupPresentation?.()
     void raceController.autoConnect()
     this.renderSnapshot(raceController.snapshot)
   },

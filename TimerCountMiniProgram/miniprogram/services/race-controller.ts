@@ -553,6 +553,8 @@ export class RaceController {
 
     this.persistRaceProgress()
     this.syncViews()
+    // 固件在 0x10 定义成功后以圈数 0 的 0x12 建立起始基线；它不是一次有效过线。
+    if (firmwareScore.lapCount === 0) return
     const localScore = {
       athleteId: profile.id,
       name: profile.name,

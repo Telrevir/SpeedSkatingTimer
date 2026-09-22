@@ -668,21 +668,25 @@ test('Reset clears local data and active session only after a successful Stop ac
   assert.equal(activeSessionRepository.load(), null)
 })
 
-test('uses firmware lap count, single-lap time and total time from 0x12', async () => {
-  const { controller, transport } = await fixture()
+test('uses zero-lap 0x12 as a display baseline without creating a score event', async () => {
+  const { controller, transport, scoreRepository } = await fixture()
   await startRace(controller, transport)
 
-  transport.emit(athleteInfoEvent(1, 0, 100))
+  transport.emit(athleteInfoEvent(1, 0, 0))
   let athlete = controller.athletesSnapshot[0]!
   assert.equal(athlete.lapCount, 0)
   assert.equal(athlete.lapCentiseconds, 0)
   assert.equal(athlete.currentRank, 1)
+  assert.deepEqual(scoreRepository.listRaces()[0]?.scores, [])
 
   transport.emit(athleteInfoEvent(1, 1, 5100, 4900))
   athlete = controller.athletesSnapshot[0]!
   assert.equal(athlete.lapCount, 1)
   assert.equal(athlete.lapCentiseconds, 4900)
   assert.equal(controller.snapshot.leaderAthleteId, athlete.id)
+  assert.deepEqual(scoreRepository.listRaces()[0]?.scores.map(({ lap, totalCentiseconds }) => ({ lap, totalCentiseconds })), [
+    { lap: 1, totalCentiseconds: 5100 },
+  ])
 })
 
 test('silently ignores missing and archived athlete IDs from 0x12', async () => {

@@ -153,7 +153,9 @@ test('Start ACK enters running while the real lifecycle scheduler request is sti
 test('only live scores and one completed finish are sent to the lifecycle service', async () => {
   const { controller, transport, lifecycle } = await fixture()
   await start(controller, transport)
-  transport.emit(athleteInfo(0, 100))
+  // 0 圈为 0x10 定义成功后的初始快照，不是可上传的有效过线。
+  transport.emit(athleteInfo(0, 0))
+  transport.emit(athleteInfo(1, 5100, 5000))
   transport.emit(encodePacket(CommandId.AthleteTransferState, Uint8Array.of(0x01)))
   transport.emit(athleteInfo(1, 5100, 5000))
   transport.emit(encodePacket(CommandId.AthleteTransferState, Uint8Array.of(0x00)))

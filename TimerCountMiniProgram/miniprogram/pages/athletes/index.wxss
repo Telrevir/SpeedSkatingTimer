@@ -10,10 +10,12 @@
 .form-actions button { flex: 1; margin: 0; }
 .group-panel { margin-bottom: 24rpx; padding: 24rpx; border-radius: 24rpx; background: #fff; }
 .group-panel-title { display: block; margin-bottom: 18rpx; color: #172033; font-size: 28rpx; font-weight: 700; }
-.group-panel-actions { display: flex; gap: 16rpx; }
-.group-panel-actions button { flex: 1; margin: 0; }
-.group-manage { background: #f2f4f7 !important; color: #344054 !important; }
-.group-select { background: #eef4ff !important; color: #2457c5 !important; }
+.group-choice-list { overflow: hidden; margin-top: 16rpx; border: 1rpx solid #eaecf0; border-radius: 14rpx; }
+.group-choice-row { display: flex; align-items: center; justify-content: space-between; min-height: 92rpx; padding: 0 18rpx; border-bottom: 1rpx solid #f2f4f7; }
+.group-choice-row:last-child { border-bottom: 0; }
+.group-row-actions { display: flex; flex-shrink: 0; gap: 10rpx; margin-left: 16rpx; }
+.group-row-actions button { margin: 0; padding: 0 12rpx; font-size: 21rpx; }
+.group-row-actions button[disabled] { background: #f2f4f7 !important; color: #98a2b3 !important; }
 .legacy-group-options { display: none !important; }
 .primary { background: #2563eb !important; color: #fff !important; }
 .secondary { background: #eef4ff !important; color: #2457c5 !important; }
@@ -36,10 +38,24 @@
 .group-list-title { margin-bottom: 12rpx; color: #667085; font-size: 22rpx; }
 .group-chip { display: inline-block; margin: 6rpx; padding: 10rpx 16rpx; border-radius: 999rpx; background: #eef4ff; color: #2457c5; font-size: 22rpx; }
 .modal-mask { position: fixed; z-index: 10; inset: 0; display: flex; align-items: center; justify-content: center; padding: 32rpx; background: rgba(16, 24, 40, .45); }
-.group-modal, .athlete-editor-modal { box-sizing: border-box; width: 100%; padding: 28rpx; border-radius: 24rpx; background: #fff; }
+.group-modal { box-sizing: border-box; display: flex; flex-direction: column; width: 70vw; height: 70vh; padding: 28rpx; border-radius: 24rpx; background: #fff; }
+.athlete-editor-modal, .group-list-modal { box-sizing: border-box; width: 100%; padding: 28rpx; border-radius: 24rpx; background: #fff; }
 .modal-title { display: block; margin-bottom: 20rpx; font-size: 32rpx; font-weight: 700; }
-.group-candidates { max-height: 520rpx; margin-top: 16rpx; border: 1rpx solid #eaecf0; border-radius: 14rpx; }
-.candidate-row { display: flex; align-items: center; gap: 14rpx; min-height: 76rpx; padding: 0 16rpx; border-bottom: 1rpx solid #f2f4f7; }
+.group-candidates { flex: 1; min-height: 0; margin-top: 16rpx; border: 1rpx solid #eaecf0; border-radius: 14rpx; }
+.group-create { width: 100%; margin: 0 0 16rpx; }
+.group-action-list { max-height: 520rpx; overflow: hidden; border: 1rpx solid #eaecf0; border-radius: 14rpx; }
+.group-action-row { display: flex; align-items: center; justify-content: space-between; min-height: 92rpx; padding: 0 18rpx; border-bottom: 1rpx solid #f2f4f7; }
+.group-action-row:last-child { border-bottom: 0; }
+.group-action-name, .group-action-meta { display: block; }
+.group-action-name { color: #172033; font-size: 27rpx; font-weight: 600; }
+.group-action-meta { margin-top: 5rpx; color: #98a2b3; font-size: 21rpx; }
+.group-choice { background: #fff; }
+.group-choice-selected { background: #eef4ff; }
+.group-choice-mark { margin-left: 8rpx; color: #2457c5; font-size: 22rpx; }
+.candidate-grid { display: flex; flex-wrap: wrap; gap: 14rpx; padding: 16rpx; }
+.candidate-card { box-sizing: border-box; display: flex; align-items: center; justify-content: center; width: calc((100% - 28rpx) / 3); min-height: 76rpx; padding: 12rpx; border: 2rpx solid #d0d5dd; border-radius: 14rpx; color: #475467; text-align: center; }
+.candidate-card-selected { border-color: #2563eb; background: #eef4ff; color: #2457c5; }
+.candidate-name { overflow: hidden; font-size: 23rpx; text-overflow: ellipsis; white-space: nowrap; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 14rpx; margin-top: 20rpx; }
 .modal-actions button { margin: 0; }
 .danger { background: #fff1f0 !important; color: #d92d20 !important; }

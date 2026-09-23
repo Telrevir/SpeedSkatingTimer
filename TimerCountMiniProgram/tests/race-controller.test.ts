@@ -689,6 +689,23 @@ test('uses zero-lap 0x12 as a display baseline without creating a score event', 
   ])
 })
 
+test('derives the live leader lap time from consecutive leader record totals', async () => {
+  const { controller, transport } = await fixture([
+    ['张三', '3333F337'],
+    ['李四', '01020304'],
+  ])
+  await startRace(controller, transport)
+
+  transport.emit(athleteInfoEvent(1, 0, 100, 0))
+  transport.emit(athleteInfoEvent(2, 0, 200, 0))
+  assert.equal(controller.snapshot.leaderLapCentiseconds, null)
+
+  transport.emit(athleteInfoEvent(2, 1, 5100, 77))
+
+  assert.equal(controller.snapshot.leaderAthleteId, 2)
+  assert.equal(controller.snapshot.leaderLapCentiseconds, 5000)
+})
+
 test('silently ignores missing and archived athlete IDs from 0x12', async () => {
   const { controller, transport, catalog } = await fixture([
     ['张三', '3333F337'],

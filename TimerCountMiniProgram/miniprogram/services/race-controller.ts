@@ -1,4 +1,5 @@
 import type { Athlete } from '../domain/athlete'
+import { LeaderLapTracker } from '../domain/leader-lap-tracker'
 import { LocalRaceScoring } from '../domain/local-race-scoring'
 import {
   AutoConnectState,
@@ -43,6 +44,8 @@ export class RaceController {
   private readonly raceStore = new RaceStore()
   private readonly athleteStore = new AthleteStore()
   private readonly scoring = new LocalRaceScoring()
+  private readonly leaderLapTracker = new LeaderLapTracker()
+  private lastLeaderRecord: { athleteId: number; totalCentiseconds: number } | null = null
   private readonly definitionQueue: EpcDefinitionQueue | null
   private sendQueue: Promise<void> = Promise.resolve()
   private raceHistoryFinished = false
@@ -199,6 +202,7 @@ export class RaceController {
         ...(raceIdentity === undefined ? {} : { raceIdentity }),
       })
       this.scoring.start(participantIds)
+      this.resetLeaderLapTracking()
       this.raceHistoryFinished = false
       if (!this.raceSyncService) this.scoreRepository?.beginRace()
       this.raceStore.setFirmwareState(FirmwareDetectionState.Detecting)
@@ -222,6 +226,7 @@ export class RaceController {
       this.definitionQueue?.clear()
       this.activeSessionRepository?.clear()
       this.scoring.reset()
+      this.resetLeaderLapTracking()
       this.raceStore.setFirmwareState(FirmwareDetectionState.Stopped)
       this.syncViews()
     })
@@ -624,14 +629,33 @@ export class RaceController {
   private syncViews(): void {
     const leaderId = this.scoring.leaderAthleteId
     const leader = leaderId === null ? null : this.scoring.getScore(leaderId)
+    const leaderLapCentiseconds = this.updateLeaderLapTime(leader)
     this.athleteStore.replaceScores(this.scoring.snapshot)
     this.raceStore.setRaceState({
       localPhase: this.scoring.phase,
       finishLap: this.scoring.finishLap,
       leaderAthleteId: leaderId,
       leaderLapCount: leader?.lapCount ?? null,
-      leaderLapCentiseconds: leader?.lapCentiseconds ?? null,
+      leaderLapCentiseconds,
     })
+  }
+
+  /** 领滑单圈只由连续两条领滑记录的总用时差得出。 */
+  private updateLeaderLapTime(leader: ReturnType<LocalRaceScoring['getScore']>): number | null {
+    if (!leader) return null
+    const isNewLeaderRecord = this.lastLeaderRecord?.athleteId !== leader.athleteId
+      || this.lastLeaderRecord.totalCentiseconds !== leader.totalCentiseconds
+    if (!isNewLeaderRecord) return this.raceStore.snapshot.leaderLapCentiseconds
+    this.lastLeaderRecord = {
+      athleteId: leader.athleteId,
+      totalCentiseconds: leader.totalCentiseconds,
+    }
+    return this.leaderLapTracker.update(leader.lapCount, leader.totalCentiseconds)
+  }
+
+  private resetLeaderLapTracking(): void {
+    this.lastLeaderRecord = null
+    this.leaderLapTracker.reset()
   }
 
   private finishHistoryIfNeeded(): void {

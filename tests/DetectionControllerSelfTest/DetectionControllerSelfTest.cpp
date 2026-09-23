@@ -100,19 +100,20 @@ int main() {
   assert(rssiController.isAthleteEpc(0x55555555UL));
   assert(!rssiController.isAthleteEpc(0x99999999UL));
 
-  RssiScoringController scorer(300);
+  RssiScoringController scorer(100);
   RssiScoreSelection selection{};
   assert(scorer.accept({0x55555555UL, -70, 8000}, selection) ==
          RssiAcceptResult::Stored);
-  assert(scorer.accept({0x55555555UL, -40, 8120}, selection) ==
+  assert(scorer.accept({0x55555555UL, -40, 8020}, selection) ==
          RssiAcceptResult::Stored);
-  assert(scorer.takeExpired(8300, selection));
+  assert(!scorer.takeExpired(8119, selection));
+  assert(scorer.takeExpired(8120, selection));
   EpcEvent rssiLap = rssiController.evaluateEpc(selection.epc,
                                                  selection.detectedMs);
   assert(rssiLap.type == EpcEventType::Athlete);
   assert(rssiLap.athlete.lapCount == 1);
-  assert(rssiLap.athlete.lapCentiseconds == 812);
-  assert(rssiLap.athlete.totalCentiseconds == 812);
+  assert(rssiLap.athlete.lapCentiseconds == 802);
+  assert(rssiLap.athlete.totalCentiseconds == 802);
 
   // 有效过线将当时的圈数、名次和总用时写入近10圈固定历史。
   DetectionController rankedController;

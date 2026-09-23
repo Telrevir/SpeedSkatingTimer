@@ -8,7 +8,7 @@
 DetectionController detectionController;
 LoraManager loraManager;
 RFIDReader rfidReader;
-RssiScoringController rssiScoringController(RSSI_PEAK_WINDOW_MS);
+RssiScoringController rssiScoringController(RSSI_PEAK_IDLE_TIMEOUT_MS);
 
 void printEpc(uint32_t epc) {
   if (epc < 0x10000000UL) Serial.print('0');
@@ -236,7 +236,7 @@ void processScoredEpc(uint32_t epc, uint32_t scoringMs) {
 void processRssiSelection(const RssiScoreSelection& selection) {
   Serial.print("[RSSI] EPC=");
   printEpc(selection.epc);
-  Serial.print("，最强信号=");
+  Serial.print("，峰值信号=");
   Serial.print(selection.rssiDbm);
   Serial.print("dBm，计分时刻=");
   Serial.println(selection.detectedMs);

@@ -4,6 +4,8 @@
 
 **Goal:** 在保留现有即时计分保险路径的同时，默认按 300ms 内最强 RSSI 样本的原始接收时间确认运动员过线，并生成既有成绩与 `0x12` 上报。
 
+> 状态：本计划的固定300ms窗口方案已被后续确认的分段规则替代。当前实现以`docs/superpowers/specs/2026-09-15-rssi-peak-scoring-design.md`为准：同一EPC连续3次信号下降或静默100ms时，选择该段最高RSSI样本；同强度峰值取后一次样本。
+
 **Architecture:** RFIDReader 将通知帧解析为带 RSSI 和到达时间的轻量事件，不处理业务。RfidTagEvent.h 提供不依赖 Arduino 串口的共享事件类型；新建 RssiScoringController，仅为已定义运动员按 EPC 聚合固定数量的候选样本；窗口到期后把选中的 EPC 与时间交给既有 DetectionController。config.h 的编译期配置选择新默认路径或旧即时路径，二者共用唯一的成绩表和 LoRa 发送逻辑。
 
 **Tech Stack:** STM32 Arduino Core、C++ 固定数组、C++ `assert` 自测、Arduino CLI。

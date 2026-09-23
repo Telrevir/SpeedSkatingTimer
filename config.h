@@ -9,7 +9,8 @@ enum class ScoringMode : uint8_t {
 };
 
 constexpr ScoringMode ACTIVE_SCORING_MODE = ScoringMode::RssiPeak;
-constexpr uint32_t RSSI_PEAK_WINDOW_MS = 300UL;
+// 同一运动员最后一次通知后达到该时长即结算当前峰值。
+constexpr uint32_t RSSI_PEAK_IDLE_TIMEOUT_MS = 100UL;
 
 // RFID serial wiring: RFID TX -> STM32 PC7, RFID RX -> STM32 PC6.
 #define RFID_SERIAL_RX PC7

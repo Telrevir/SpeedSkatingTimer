@@ -21,6 +21,7 @@ interface AthletePageDependencies {
     subscribe(listener: () => void): () => void
     subscribeAthletes(listener: () => void): () => void
     selectGroup(groupId: string | null): void
+    activeGroup: { id: string } | null
   }
   athleteManagement: {
     create(name: string, epc: string): Promise<ManagementResult>
@@ -35,7 +36,6 @@ interface AthletePageDependencies {
   }
   catalogSync: { refresh(): Promise<{ state: 'completed' | 'failed'; message?: string }> }
   confirm?: (title: string, content: string) => Promise<boolean>
-  chooseGroupEditor?: (items: string[]) => Promise<number | null>
 }
 
 interface AthletePageData {
@@ -43,6 +43,7 @@ interface AthletePageData {
   archivedAthletes: Array<{ id: number; name: string; epc: string }>
   showArchived: boolean
   editingId: number
+  athleteCreateVisible: boolean
   athleteEditorVisible: boolean
   formName: string
   formEpc: string
@@ -54,6 +55,7 @@ interface AthletePageData {
   backendAvailable: boolean
   backendMessage: string
   groups: Array<{ id: string; name: string; count: number }>
+  selectedRaceGroupId: string
   groupModalVisible: boolean
   editingGroupId: string
   groupFormName: string
@@ -164,9 +166,10 @@ export function createAthletePageDefinition(
 
   return {
     data: {
-      athletes: [], archivedAthletes: [], showArchived: false, editingId: 0, athleteEditorVisible: false,
+      athletes: [], archivedAthletes: [], showArchived: false, editingId: 0, athleteCreateVisible: false, athleteEditorVisible: false,
       formName: '', formEpc: '', editFormName: '', editFormEpc: '', athleteSearch: '', busy: false,
-      managementEnabled: true, backendAvailable: false, backendMessage: '', groups: [], groupModalVisible: false,
+      managementEnabled: true, backendAvailable: false, backendMessage: '', groups: [],
+      selectedRaceGroupId: '', groupModalVisible: false,
       editingGroupId: '', groupFormName: '', groupSearch: '', groupSelectedIds: [], groupCandidates: [],
     } as AthletePageData,
 
@@ -174,7 +177,10 @@ export function createAthletePageDefinition(
       unsubscribeCatalog = dependencies.athleteCatalog.subscribe(() => renderAthletes(this))
       unsubscribeScores = dependencies.raceController.subscribeAthletes(() => renderAthletes(this))
       unsubscribeRace = dependencies.raceController.subscribe(() => {
-        this.setData({ managementEnabled: dependencies.raceController.canManageAthletes })
+        this.setData({
+          managementEnabled: dependencies.raceController.canManageAthletes,
+          selectedRaceGroupId: dependencies.raceController.activeGroup?.id ?? '',
+        })
         renderAthletes(this)
       })
       unsubscribeGroups = dependencies.groupStore.subscribe((groups) => {
@@ -202,8 +208,16 @@ export function createAthletePageDefinition(
         this,
         () => dependencies.athleteManagement.create(this.data.formName, this.data.formEpc),
         '运动员已添加',
-        () => this.setData({ formName: '', formEpc: '' }),
+        () => this.setData({ athleteCreateVisible: false, formName: '', formEpc: '' }),
       )
+    },
+
+    openCreateAthlete(this: PageContext) {
+      if (!ensureManagementEnabled(this) || this.data.busy) return
+      this.setData({ athleteCreateVisible: true, formName: '', formEpc: '' })
+    },
+    closeCreateAthlete(this: PageContext) {
+      this.setData({ athleteCreateVisible: false, formName: '', formEpc: '' })
     },
 
     editAthlete(this: PageContext, event: WechatMiniprogram.TouchEvent) {
@@ -252,29 +266,32 @@ export function createAthletePageDefinition(
 
     toggleArchived(this: PageContext) { this.setData({ showArchived: !this.data.showArchived }) },
 
-    async selectRaceGroup(this: PageContext) {
+    applyRaceGroup(this: PageContext, event: WechatMiniprogram.TouchEvent) {
       if (!dependencies.raceController.canManageAthletes) {
         notify('本场比赛重置前不能切换分组')
         return
       }
-      const groups = dependencies.groupStore.snapshot
-      const index = await choose(dependencies, ['全部运动员', ...groups.map(({ name }) => name)])
-      if (index === null) return
+      if (this.data.busy) return
+      const id = typeof event.currentTarget.dataset.id === 'string' ? event.currentTarget.dataset.id : ''
       try {
-        dependencies.raceController.selectGroup(groups[index - 1]?.id ?? null)
+        dependencies.raceController.selectGroup(id || null)
+        this.setData({ selectedRaceGroupId: id })
       } catch {
         notify('切换分组失败')
       }
     },
 
-    async manageGroups(this: PageContext) {
-      if (!ensureManagementEnabled(this) || this.data.busy) return
-      const groups = dependencies.groupStore.snapshot
-      const index = await choose(dependencies, ['新建分组', ...groups.map(({ name }) => `编辑：${name}`)])
-      if (index === null) return
-      openGroupEditor(this, index === 0 ? null : groups[index - 1]?.id ?? null)
+    openNewGroup(this: PageContext) { openGroupEditor(this, null) },
+    editGroup(this: PageContext, event: WechatMiniprogram.TouchEvent) {
+      openGroupEditor(this, typeof event.currentTarget.dataset.id === 'string' ? event.currentTarget.dataset.id : null)
     },
-
+    async deleteGroupFromList(this: PageContext, event: WechatMiniprogram.TouchEvent) {
+      const id = typeof event.currentTarget.dataset.id === 'string' ? event.currentTarget.dataset.id : ''
+      const group = dependencies.groupStore.snapshot.find((item) => item.id === id)
+      if (!id || !group || !ensureManagementEnabled(this) || this.data.busy
+          || !await confirm(dependencies, '删除分组', `确认删除“${group.name}”？`)) return
+      await runManagementAction(this, () => dependencies.groupManagement.delete(id), '分组已删除', undefined, '暂时无法删除分组，请稍后重试')
+    },
     openGroupEditor(this: PageContext, groupId: string | null) { openGroupEditor(this, groupId) },
     closeGroupEditor(this: PageContext) { this.setData({ groupModalVisible: false }) },
     updateGroupName(this: PageContext, event: WechatMiniprogram.Input) { this.setData({ groupFormName: event.detail.value }) },
@@ -304,13 +321,6 @@ export function createAthletePageDefinition(
       )
     },
 
-    async deleteGroup(this: PageContext) {
-      const id = this.data.editingGroupId
-      if (!id || !ensureManagementEnabled(this) || this.data.busy
-          || !await confirm(dependencies, '删除分组', '确认删除当前分组？')) return
-      await runManagementAction(this, () => dependencies.groupManagement.delete(id), '分组已删除',
-        () => this.setData({ groupModalVisible: false }), '暂时无法删除分组，请稍后重试')
-    },
   }
 }
 
@@ -326,9 +336,4 @@ function friendlyMessage(message: string, fallback: string): string {
 function confirm(dependencies: AthletePageDependencies, title: string, content: string): Promise<boolean> {
   if (dependencies.confirm) return dependencies.confirm(title, content)
   return new Promise((resolve) => wx.showModal({ title, content, success: (result) => resolve(result.confirm) }))
-}
-
-function choose(dependencies: AthletePageDependencies, items: string[]): Promise<number | null> {
-  if (dependencies.chooseGroupEditor) return dependencies.chooseGroupEditor(items)
-  return new Promise((resolve) => wx.showActionSheet({ itemList: items, success: (result) => resolve(result.tapIndex), fail: () => resolve(null) }))
 }

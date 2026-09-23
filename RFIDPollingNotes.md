@@ -55,7 +55,7 @@ processTagEvent(tagEvent);
 原因是 `processTagEvent()` 包含串口输出、计时逻辑、LoRa 发送等较重操作，不适合放入串口接收事件或中断上下文中运行。
 
 
-默认`RssiPeak`模式下，已定义运动员不立即计分：主循环按EPC在300ms窗口内保留RSSI最高的事件，到期后以该事件的接收时间交给`DetectionController`。普通EPC和黑名单仍立即处理；`LegacyImmediate`模式则让全部事件沿用原即时计分路径。
+默认`RssiPeak`模式下，已定义运动员不立即计分：主循环按EPC聚合连续事件，同一EPC连续3次信号下降或最后一次信号后静默100ms时，以该段RSSI最高事件的接收时间交给`DetectionController`。RSSI相同时采用后一次事件。普通EPC和黑名单仍立即处理；`LegacyImmediate`模式则让全部事件沿用原即时计分路径。
 
 
 ## 多次轮询备用路径

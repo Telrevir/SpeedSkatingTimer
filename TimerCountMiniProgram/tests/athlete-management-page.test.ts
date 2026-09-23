@@ -47,6 +47,7 @@ function dependencies() {
       subscribe: (listener: () => void) => { listener(); return () => undefined },
       subscribeAthletes: (listener: () => void) => { listener(); return () => undefined },
       selectGroup: (_groupId: string | null): void => undefined,
+      activeGroup: null,
     },
     athleteManagement: {
       create: async (): Promise<Result> => ({ ok: true, message: '已保存' }),
@@ -69,7 +70,7 @@ test('athlete page waits for server receipt before success toast', async () => {
   const { definition, page, toasts } = fixture({
     athleteManagement: { ...dependencies().athleteManagement, create: () => { calls += 1; return pending.promise } },
   })
-  page.setData({ formName: '乙', formEpc: '11223344', backendAvailable: true })
+  page.setData({ athleteCreateVisible: true, formName: '乙', formEpc: '11223344', backendAvailable: true })
   const saving = definition.saveAthlete.call(page as never)
 
   assert.equal(calls, 1)
@@ -79,6 +80,21 @@ test('athlete page waits for server receipt before success toast', async () => {
   await saving
   assert.deepEqual(toasts, ['运动员已添加'])
   assert.equal(page.data.formName, '')
+  assert.equal(page.data.athleteCreateVisible, false)
+})
+
+test('athlete page opens an empty create-athlete editor', () => {
+  const { definition, page } = fixture()
+  page.setData({ backendAvailable: true, formName: '旧姓名', formEpc: '01020304' })
+
+  const athleteActions = definition as typeof definition & {
+    openCreateAthlete(this: unknown): void
+  }
+  athleteActions.openCreateAthlete.call(page as never)
+
+  assert.equal(page.data.athleteCreateVisible, true)
+  assert.equal(page.data.formName, '')
+  assert.equal(page.data.formEpc, '')
 })
 
 test('failed group save keeps editor open and cache unchanged', async () => {
@@ -114,12 +130,51 @@ test('athlete page selects a cached group for the current race', async () => {
       ...dependencies().raceController,
       selectGroup: (groupId: string | null) => selectedGroupIds.push(groupId),
     },
-    chooseGroupEditor: async () => 1,
   })
 
-  await definition.selectRaceGroup.call(page as never)
+  const groupActions = definition as typeof definition & {
+    applyRaceGroup(this: unknown, event: WechatMiniprogram.TouchEvent): void
+  }
+  groupActions.applyRaceGroup.call(page as never, { currentTarget: { dataset: { id: '1' } } } as never)
 
   assert.deepEqual(selectedGroupIds, ['1'])
+  assert.equal(page.data.selectedRaceGroupId, '1')
+})
+
+test('athlete page opens the new-group editor directly from the group card', () => {
+  const { definition, page } = fixture()
+  page.setData({ backendAvailable: true })
+
+  const groupActions = definition as typeof definition & {
+    openNewGroup(this: unknown): void
+  }
+  groupActions.openNewGroup.call(page as never)
+
+  assert.equal(page.data.groupModalVisible, true)
+  assert.equal(page.data.editingGroupId, '')
+})
+
+test('athlete page deletes a group directly from the group card list', async () => {
+  const deletedGroupIds: string[] = []
+  const { definition, page, toasts } = fixture({
+    groupManagement: {
+      ...dependencies().groupManagement,
+      delete: async (id: string) => {
+        deletedGroupIds.push(id)
+        return { ok: true, message: '已删除' }
+      },
+    },
+    confirm: async () => true,
+  })
+  page.setData({ backendAvailable: true })
+
+  const groupActions = definition as typeof definition & {
+    deleteGroupFromList(this: unknown, event: WechatMiniprogram.TouchEvent): Promise<void>
+  }
+  await groupActions.deleteGroupFromList.call(page as never, { currentTarget: { dataset: { id: '1' } } } as never)
+
+  assert.deepEqual(deletedGroupIds, ['1'])
+  assert.deepEqual(toasts, ['分组已删除'])
 })
 
 test('athlete editor saves modal values without changing the new-athlete form', async () => {

@@ -5,18 +5,34 @@
 
   <view class="group-panel">
     <text class="group-panel-title">运动员分组</text>
-    <view class="group-panel-actions">
-      <button class="group-manage" size="mini" disabled="{{!managementEnabled || !backendAvailable || busy}}" bindtap="manageGroups">管理运动员分组</button>
-      <button class="group-select" size="mini" disabled="{{!managementEnabled || busy}}" bindtap="selectRaceGroup">选择运动员分组</button>
+    <button class="primary group-create" size="mini" disabled="{{!managementEnabled || !backendAvailable || busy}}" bindtap="openNewGroup">添加分组</button>
+    <view class="group-choice-list">
+      <view class="group-choice-row {{selectedRaceGroupId === '' ? 'group-choice-selected' : ''}}" data-id="" bindtap="applyRaceGroup">
+        <view>
+          <text class="group-action-name">全部运动员<text wx:if="{{selectedRaceGroupId === ''}}" class="group-choice-mark">（已选择）</text></text>
+        </view>
+        <view class="group-row-actions">
+          <button class="edit" size="mini" disabled>修改</button>
+          <button class="delete" size="mini" disabled>删除</button>
+        </view>
+      </view>
+      <view wx:for="{{groups}}" wx:key="id" class="group-choice-row {{selectedRaceGroupId === item.id ? 'group-choice-selected' : ''}}" data-id="{{item.id}}" bindtap="applyRaceGroup">
+        <view>
+          <text class="group-action-name">{{item.name}}<text wx:if="{{selectedRaceGroupId === item.id}}" class="group-choice-mark">（已选择）</text></text>
+          <text class="group-action-meta">{{item.count}} 名运动员</text>
+        </view>
+        <view class="group-row-actions">
+          <button class="edit" size="mini" data-id="{{item.id}}" disabled="{{!managementEnabled || !backendAvailable || busy}}" catchtap="editGroup">修改</button>
+          <button class="delete" size="mini" data-id="{{item.id}}" disabled="{{!managementEnabled || !backendAvailable || busy}}" catchtap="deleteGroupFromList">删除</button>
+        </view>
+      </view>
     </view>
   </view>
 
   <view class="toolbar">
     <text class="form-title">新建运动员</text>
-    <input class="form-input" value="{{formName}}" maxlength="32" placeholder="运动员姓名" bindinput="updateName" disabled="{{!managementEnabled || !backendAvailable || busy}}" />
-    <input class="form-input" value="{{formEpc}}" maxlength="8" placeholder="8 位 EPC，例如 A1B2C3D4" bindinput="updateEpc" disabled="{{!managementEnabled || !backendAvailable || busy}}" />
     <view class="form-actions">
-      <button class="primary" size="mini" loading="{{busy}}" disabled="{{!managementEnabled || !backendAvailable || busy}}" bindtap="saveAthlete">添加运动员</button>
+      <button class="primary" size="mini" disabled="{{!managementEnabled || !backendAvailable || busy}}" bindtap="openCreateAthlete">添加运动员</button>
     </view>
   </view>
 
@@ -61,15 +77,27 @@
       <input class="form-input" value="{{groupFormName}}" placeholder="分组名称" bindinput="updateGroupName" disabled="{{busy || !backendAvailable}}" />
       <input class="form-input" value="{{groupSearch}}" placeholder="搜索姓名、EPC或ID" bindinput="updateGroupSearch" disabled="{{busy || !backendAvailable}}" />
       <scroll-view scroll-y class="group-candidates">
-        <view wx:for="{{groupCandidates}}" wx:key="id" class="candidate-row" data-id="{{item.id}}" bindtap="toggleGroupMember">
-          <checkbox checked="{{item.selected}}" disabled="{{busy || !backendAvailable}}" />
-          <text>{{item.name}}（{{item.id}}）</text>
+        <view class="candidate-grid">
+          <view wx:for="{{groupCandidates}}" wx:key="id" class="candidate-card {{item.selected ? 'candidate-card-selected' : ''}}" data-id="{{item.id}}" bindtap="toggleGroupMember">
+            <text class="candidate-name">{{item.name}}</text>
+          </view>
         </view>
       </scroll-view>
       <view class="modal-actions">
         <button size="mini" disabled="{{busy}}" bindtap="closeGroupEditor">取消</button>
-        <button wx:if="{{editingGroupId}}" size="mini" class="danger" loading="{{busy}}" disabled="{{busy || !backendAvailable}}" bindtap="deleteGroup">删除</button>
         <button size="mini" class="primary" loading="{{busy}}" disabled="{{busy || !backendAvailable}}" bindtap="saveGroup">保存</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{athleteCreateVisible}}" class="modal-mask">
+    <view class="athlete-editor-modal">
+      <text class="modal-title">添加运动员</text>
+      <input class="form-input" value="{{formName}}" maxlength="32" placeholder="运动员姓名" bindinput="updateName" disabled="{{busy || !backendAvailable}}" />
+      <input class="form-input" value="{{formEpc}}" maxlength="8" placeholder="8 位 EPC，例如 A1B2C3D4" bindinput="updateEpc" disabled="{{busy || !backendAvailable}}" />
+      <view class="modal-actions">
+        <button size="mini" disabled="{{busy}}" bindtap="closeCreateAthlete">取消</button>
+        <button size="mini" class="primary" loading="{{busy}}" disabled="{{busy || !backendAvailable}}" bindtap="saveAthlete">保存</button>
       </view>
     </view>
   </view>

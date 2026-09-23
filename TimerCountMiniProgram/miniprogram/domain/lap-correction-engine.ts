@@ -43,7 +43,7 @@ export function evaluateLapCorrection(input: LapCorrectionInput): LapCorrectionD
     return noCorrection('insufficient-history')
   }
 
-  const baselineCentiseconds = robustBaseline(history)
+  const baselineCentiseconds = averageBaseline(history)
   const historyVariation = (Math.max(...history) - Math.min(...history)) / baselineCentiseconds
   if (historyVariation > LAP_CORRECTION_LIMITS.maxHistoryVariationRatio) {
     return noCorrection('unstable-history', baselineCentiseconds)
@@ -88,13 +88,8 @@ function isValidInput(input: LapCorrectionInput): boolean {
     ))
 }
 
-function robustBaseline(history: number[]): number {
-  if (history.length === 2) return (history[0]! + history[1]!) / 2
-  const sorted = [...history].sort((left, right) => left - right)
-  const middle = Math.floor(sorted.length / 2)
-  return sorted.length % 2 === 1
-    ? sorted[middle]!
-    : (sorted[middle - 1]! + sorted[middle]!) / 2
+function averageBaseline(history: number[]): number {
+  return history.reduce((sum, lap) => sum + lap, 0) / history.length
 }
 
 function noCorrection(

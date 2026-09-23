@@ -41,12 +41,12 @@ enum class ScoringMode : uint8_t {
 };
 
 constexpr ScoringMode ACTIVE_SCORING_MODE = ScoringMode::RssiPeak;
-constexpr uint32_t RSSI_PEAK_WINDOW_MS = 300UL;
+constexpr uint32_t RSSI_PEAK_IDLE_TIMEOUT_MS = 100UL;
 ```
 
 `LegacyImmediate` 是原保险路径：每条读取事件立即调用 `DetectionController::evaluateEpc(epc, millis())`，保留当前对外行为。
 
-`RssiPeak` 是默认路径：已定义运动员的事件按 EPC 分别进入 300ms 窗口，窗口到期后才使用最佳样本的 `detectedMs` 调用 `evaluateEpc()`。最高 RSSI 获胜；RSSI 相等时，较早到达的样本获胜，保证结果稳定。每名运动员只维护一个窗口，最多 50 个窗口，使用固定数组。
+`RssiPeak` 是默认路径：已定义运动员的事件按 EPC 分别聚合为一个信号段。相邻事件的 RSSI 连续3次下降时立即结算；最后一次事件后100ms没有新事件时也结算。结算时使用该段最高RSSI样本的 `detectedMs` 调用 `evaluateEpc()`；最高RSSI相等时取后一次样本，保证峰顶平台使用离开前的时间。每名运动员只维护一个候选，最多50项，使用固定数组。
 
 
 
@@ -58,12 +58,12 @@ RFID 通知帧
 -> 主循环按配置选择路径
 -> LegacyImmediate: 立即交给 DetectionController
 -> RssiPeak: 已定义运动员进入 RssiScoringController
--> 300ms 到期，取最高 RSSI 的 detectedMs
+-> 连续3次下降或静默100ms，取最高 RSSI 的 detectedMs
 -> DetectionController 更新成绩
 -> 既有 LoRa 0x12 上报
 ```
 
-主循环不得使用 `delay(300)`。每轮在读取事件前后调用 RSSI 模块的到期清理函数；这样即使 `RFIDReader::poll()` 或队列处理带来延迟，计分仍使用候选样本的原始接收时间。
+主循环不得使用阻塞式延时。每轮在读取事件前后调用 RSSI 模块的静默到期清理函数；这样即使 `RFIDReader::poll()` 或队列处理带来延迟，计分仍使用候选样本的原始接收时间。
 
 
 
@@ -77,6 +77,6 @@ RSSI 模块不维护运动员成绩、8 秒静默或 LoRa 状态，因此切换�
 
 ## Verification
 
-- 纯 C++ 自测覆盖 RSSI 最大值、RSSI 相等、不同 EPC 并行、300ms 边界、跨 `millis()` 回绕和停止清空。
+- 纯 C++ 自测覆盖连续3次下降、RSSI 最大值和相等峰顶、不同 EPC 并行、100ms 静默边界、跨 `millis()` 回绕和停止清空。
 - DetectionController 自测验证使用峰值样本时间计算总时长和单圈时长。
-- STM32 实机记录同一过线过程中的 EPC、RSSI、接收时间、选中样本及最终 `0x12`，确认 300ms 内通常能收集到多个样本，并比较新旧模式的成绩。
+- STM32 实机记录同一过线过程中的 EPC、RSSI、接收时间、选中样本及最终 `0x12`，确认连续下降与100ms静默均能正确结算，并比较新旧模式的成绩。

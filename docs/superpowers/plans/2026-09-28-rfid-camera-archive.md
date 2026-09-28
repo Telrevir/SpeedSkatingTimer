@@ -17,6 +17,7 @@
 * 默认照片 640×480、JPEG 质量 55；编码与取流不得阻塞串口或 Tk 主线程。
 * 无可用摄像头/画面时，RFID 与导出继续工作，照片 ID 留空。
 * 历史页兼容旧 CSV，并在照片缺失时显示无照片状态。
+* 历史截取重算按 EPC 独立进行，空闲间隔优先于严格连续下降；动态标记不改写归档原始数据。
 
 ## Review Focus
 
@@ -25,6 +26,7 @@
 * 无照片点悬停：不得显示上一点照片；Task 4 测试。
 * 摄像头打开失败或断开：实时 RFID 仍可继续；Task 1 测试。
 * 筛选、缩放、滚动后的悬停：返回的照片必须属于当前可见点；Task 4 测试。
+* 历史截取：空闲阈值命中时以前一点结束，并让当前点开始新段；Task 4 测试。
 
 ---
 
@@ -77,18 +79,22 @@
 - [ ] Re-run focused tests and confirm pass.
 - [ ] Commit: `feat: load camera archives for history replay`.
 
-### Task 4: 实时关联、历史照片面板与曲线点
+### Task 4: 历史动态截取、实时关联、照片面板与曲线点
 
 **Files:**
 - Modify: `D:\WorkProject\计时系统文件及备份\RFID信号监视\rfid_monitor\app.py`
 - Modify: `D:\WorkProject\计时系统文件及备份\RFID信号监视\tests\test_chart.py`
+- Create: `D:\WorkProject\计时系统文件及备份\RFID信号监视\rfid_monitor\history_markers.py`
+- Create: `D:\WorkProject\计时系统文件及备份\RFID信号监视\tests\test_history_markers.py`
 
 **Interfaces:**
 - Consumes: `CameraWorker`, `PhotoPool`, `export_ttp`, `LoadedHistory`, and `HistoryViewport.nearest_point`.
-- Produces: camera UI controls; `.ttp` stop export; 1:5:2 history settings/curve/photo layout; hover photo display.
+- Produces: `recalculate_history_markers(points, descending_count, idle_seconds)`; camera UI controls; `.ttp` stop export; 1:5:2 history settings/curve/photo layout; hover photo display.
 
-- [ ] Write failing pure tests for the point-marker display choice (labelled versus colour-only) and hover selection returning no image for an empty photo ID.
-- [ ] Run focused chart tests and confirm failure.
+- [ ] Write failing tests for an idle gap ending the preceding point before starting the current one, strict-only RSSI descents, equal RSSI resetting the descent count, point-marker display choice (labelled versus colour-only), and hover selection returning no image for an empty photo ID.
+- [ ] Run focused marker/chart tests and confirm failure.
+- [ ] Implement `recalculate_history_markers(points, descending_count, idle_seconds)` which keeps raw labels untouched and creates display-only start/stop/peak markers independently per EPC. Check each new-point gap before continuous descending RSSI.
+- [ ] Add the two history RSSI condition controls to curve settings and recompute/repaint the display markers whenever either value changes.
 - [ ] Add camera selection, enable switch, JPEG quality control and nonblocking worker event handling. On each accepted RFID event, add the latest frame to `PhotoPool` and store its ID.
 - [ ] Replace stop-time CSV export with `.ttp` export, preserving the no-data result and reporting its filename.
 - [ ] Update history selection to open `.ttp` or legacy CSV; render all data points, bind canvas motion to nearest-point selection, and update/reset the right photo panel with `PIL.ImageTk.PhotoImage`.

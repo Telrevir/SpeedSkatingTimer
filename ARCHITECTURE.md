@@ -18,7 +18,8 @@ LoRa AUX -> STM32 PA1
 
 ```text
 SpeedSkatingTimer.ino    初始化、命令调度和EPC事件发送
-RFIDReader.h             RFID轮询、帧校验、EPC接收队列
+RFIDReader.h             主动/被动RFID轮询、帧校验、EPC接收队列
+RfidPollingState.h       非阻塞主动轮询的超时与帧间静默状态
 RfidTagEvent.h           RFID事件的EPC、RSSI和完整帧接收时间
 RssiScoringController.h  已定义运动员的RSSI峰值窗口，只选择计分时间
 DetectionController.h    运动员成绩时钟、四张50槽列表、圈数、单圈时长、近10圈历史、名次和8秒规则
@@ -53,6 +54,7 @@ APP命令包
 
 RFID响应
 → RFIDReader RfidTagEvent队列（EPC、RSSI、完整帧接收时间）
+→ `config.h`选择非阻塞单次盘点或读写器持续上报的多次盘点
 → SpeedSkatingTimer按`config.h`选择计分模式
 → `LegacyImmediate`：立即交给DetectionController
 → `RssiPeak`：已定义运动员按EPC聚合，连续3次信号下降或静默100ms后取该段最高RSSI样本的接收时间
@@ -78,5 +80,6 @@ APP发送0x11
 - 历史名次仅在有效过线时计算一次：圈数高者优先、总用时短者优先、有效扫描顺序早者优先；后续其他运动员过线不回写旧历史。
 - 第一名运动员的初始圈数、单圈时长和总时长均为0；后续运动员共用首个运动员确认时启动的成绩时钟。
 - `config.h`默认使用`RssiPeak`；将`ACTIVE_SCORING_MODE`改为`LegacyImmediate`可恢复原即时计分保险路径。
+- `config.h`默认使用非阻塞主动单次盘点；将`RFID_USE_PASSIVE_INVENTORY`改为`true`后，读写器使用多次盘点并持续上报标签帧。
 - 普通EPC和运动员分别维护8秒记录，静默路径不发送协议也不输出日志。
 - 固件不包含持久化存储、姓名、排名、领滑和RESET业务。

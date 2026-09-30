@@ -12,6 +12,9 @@ constexpr ScoringMode ACTIVE_SCORING_MODE = ScoringMode::RssiPeak;
 // 同一运动员最后一次通知后达到该时长即结算当前峰值。
 constexpr uint32_t RSSI_PEAK_IDLE_TIMEOUT_MS = 100UL;
 
+// true使用读写器持续上报的多次盘点，false使用非阻塞单次盘点。
+constexpr bool RFID_USE_PASSIVE_INVENTORY = false;
+
 // RFID serial wiring: RFID TX -> STM32 PC7, RFID RX -> STM32 PC6.
 #define RFID_SERIAL_RX PC7
 #define RFID_SERIAL_TX PC6
@@ -25,5 +28,6 @@ constexpr uint32_t RSSI_PEAK_IDLE_TIMEOUT_MS = 100UL;
 
 // RFID commands.
 #define CMD_SINGLE_INVENTORY {0xBB, 0x00, 0x22, 0x00, 0x00, 0x22, 0x7E}
+#define CMD_MULTIPLE_INVENTORY {0xBB, 0x00, 0x27, 0x00, 0x03, 0x22, 0xFF, 0xFF, 0x4A, 0x7E}
 #define CMD_STOP_INVENTORY {0xBB, 0x00, 0x28, 0x00, 0x00, 0x28, 0x7E}
 #endif

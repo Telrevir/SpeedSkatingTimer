@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <HardwareSerial.h>
 #include "config.h"
+#include "RfidPollingState.h"
 #include "RfidTagEvent.h"
 
 enum class RfidError : uint8_t {
@@ -16,9 +17,13 @@ class RFIDReader {
 private:
   static constexpr uint8_t QUEUE_CAPACITY = 64;
   static constexpr uint16_t FRAME_CAPACITY = 128;
+  static constexpr uint16_t MAX_BYTES_PER_POLL = 96;
+  static constexpr uint32_t ACTIVE_RESPONSE_TIMEOUT_MS = 300;
+  static constexpr uint32_t ACTIVE_INTER_FRAME_GAP_MS = 20;
 
   HardwareSerial serial_;
   uint8_t inventoryCommand_[7] = CMD_SINGLE_INVENTORY;
+  uint8_t multipleInventoryCommand_[10] = CMD_MULTIPLE_INVENTORY;
   uint8_t stopCommand_[7] = CMD_STOP_INVENTORY;
   uint8_t frame_[FRAME_CAPACITY];
   uint16_t frameLength_;
@@ -31,6 +36,7 @@ private:
   bool reading_;
   bool queueOverflowed_;
   RfidError error_;
+  RfidPollingState pollingState_;
 
   bool checksumValid() const {
     if (frameLength_ < 7) return false;
@@ -58,14 +64,26 @@ private:
   }
 
   void processFrame() {
-    if (frame_[1] != 0x02 || frame_[2] != 0x22) return;
-    if (frameLength_ < 12 || !checksumValid()) {
+    if (!checksumValid()) {
       error_ = RfidError::InvalidFrame;
       return;
     }
 
     uint16_t dataLength = (static_cast<uint16_t>(frame_[3]) << 8) | frame_[4];
-    if (dataLength < 9 || frameLength_ != dataLength + 7) {
+    if (frameLength_ != dataLength + 7) {
+      error_ = RfidError::InvalidFrame;
+      return;
+    }
+
+    // E720空盘点帧表示本轮单次盘点已经结束，可立即安排下一轮。
+    if (frame_[1] == 0x01 && frame_[2] == 0xFF &&
+        dataLength == 1 && frame_[5] == 0x15) {
+      pollingState_.finishRound();
+      return;
+    }
+
+    if (frame_[1] != 0x02 || frame_[2] != 0x22) return;
+    if (frameLength_ < 12 || dataLength < 9) {
       error_ = RfidError::InvalidFrame;
       return;
     }
@@ -122,19 +140,13 @@ private:
     }
   }
 
-  void readResponse(uint32_t timeoutMs = 300, uint32_t gapMs = 20) {
-    uint32_t startedAt = millis();
-    uint32_t lastByteAt = startedAt;
-    bool receivedAny = false;
-
-    while (millis() - startedAt <= timeoutMs) {
-      while (serial_.available() > 0) {
-        consumeByte(static_cast<uint8_t>(serial_.read()));
-        lastByteAt = millis();
-        receivedAny = true;
-      }
-      if (receivedAny && millis() - lastByteAt > gapMs) break;
-      yield();
+  void readAvailableBytes() {
+    uint16_t bytesRead = 0;
+    while (serial_.available() > 0 && bytesRead < MAX_BYTES_PER_POLL) {
+      uint32_t receivedAt = millis();
+      pollingState_.noteByteReceived(receivedAt);
+      consumeByte(static_cast<uint8_t>(serial_.read()));
+      ++bytesRead;
     }
   }
 
@@ -154,7 +166,9 @@ public:
     : serial_(RFID_SERIAL_RX, RFID_SERIAL_TX),
       frameLength_(0), expectedLength_(0), queueRead_(0), queueWrite_(0),
       queueCount_(0), ready_(false), reading_(false), queueOverflowed_(false),
-      error_(RfidError::None) {}
+      error_(RfidError::None),
+      pollingState_(RFID_USE_PASSIVE_INVENTORY, ACTIVE_RESPONSE_TIMEOUT_MS,
+                    ACTIVE_INTER_FRAME_GAP_MS) {}
 
   bool begin() {
     serial_.begin(RFID_BAUDRATE);
@@ -171,8 +185,14 @@ public:
   bool startInventory() {
     if (!ready_) return false;
     if (reading_) return true;
-    if (serial_.write(inventoryCommand_, sizeof(inventoryCommand_)) !=
-        sizeof(inventoryCommand_)) return false;
+
+    pollingState_.start(millis());
+    if (RFID_USE_PASSIVE_INVENTORY &&
+        serial_.write(multipleInventoryCommand_, sizeof(multipleInventoryCommand_)) !=
+          sizeof(multipleInventoryCommand_)) {
+      pollingState_.stop();
+      return false;
+    }
     reading_ = true;
     return true;
   }
@@ -183,19 +203,22 @@ public:
     if (serial_.write(stopCommand_, sizeof(stopCommand_)) != sizeof(stopCommand_))
       return false;
     reading_ = false;
+    pollingState_.stop();
     return true;
   }
 
   void poll() {
     if (!reading_) return;
-    if (serial_.write(inventoryCommand_, sizeof(inventoryCommand_)) !=
-        sizeof(inventoryCommand_)) {
-      error_ = RfidError::IoFailure;
-      return;
+    readAvailableBytes();
+
+    if (pollingState_.takeAction(millis()) ==
+        RfidPollingAction::SendSingleInventory) {
+      if (serial_.write(inventoryCommand_, sizeof(inventoryCommand_)) !=
+          sizeof(inventoryCommand_)) {
+        error_ = RfidError::IoFailure;
+        pollingState_.finishRound();
+      }
     }
-    frameLength_ = 0;
-    expectedLength_ = 0;
-    readResponse();
   }
 
   bool readTagEvent(RfidTagEvent& event) {

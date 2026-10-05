@@ -4,24 +4,24 @@
 #include "../../RfidPollingState.h"
 
 int main() {
-  RfidPollingState active(false, 300, 20);
+  RfidPollingState active(false, 100, 20);
   active.start(1000);
 
   // 主动模式启动后立即允许发出第一条单次盘点命令。
   assert(active.takeAction(1000) == RfidPollingAction::SendSingleInventory);
-  assert(active.takeAction(1299) == RfidPollingAction::None);
+  assert(active.takeAction(1099) == RfidPollingAction::None);
 
-  // 无任何数据时，300ms超时后才允许下一次盘点。
-  assert(active.takeAction(1300) == RfidPollingAction::SendSingleInventory);
+  // 无任何数据时，100ms超时后才允许下一次盘点。
+  assert(active.takeAction(1100) == RfidPollingAction::SendSingleInventory);
 
   // 标签通知到达后保留20ms帧间等待，以收集同轮的后续标签。
-  active.noteByteReceived(1310);
-  assert(active.takeAction(1329) == RfidPollingAction::None);
-  assert(active.takeAction(1330) == RfidPollingAction::SendSingleInventory);
+  active.noteByteReceived(1110);
+  assert(active.takeAction(1129) == RfidPollingAction::None);
+  assert(active.takeAction(1130) == RfidPollingAction::SendSingleInventory);
 
   // 完整空盘点错误帧代表本轮已结束，可以立即发起下一轮。
   active.finishRound();
-  assert(active.takeAction(1330) == RfidPollingAction::SendSingleInventory);
+  assert(active.takeAction(1130) == RfidPollingAction::SendSingleInventory);
 
   // 被动模式只接收连续通知，永远不发送单次盘点命令。
   RfidPollingState passive(true, 300, 20);

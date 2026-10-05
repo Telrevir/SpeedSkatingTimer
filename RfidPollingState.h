@@ -56,7 +56,16 @@ public:
   }
 
   RfidPollingAction takeAction(uint32_t nowMs) {
-    if (!running_ || passiveMode_) return RfidPollingAction::None;
+    if (!running_ || passiveMode_) {
+      //***测试代码，稍后删除 */
+      if(!running_){
+        Serial.println("polling失败：当前没有运行");
+      }
+      else{
+        Serial.println("polling失败：当前为被动模式");
+      }
+      return RfidPollingAction::None;
+    }
 
     if (waitingForResponse_) {
       if (receivedByte_) {

@@ -13,7 +13,7 @@ constexpr ScoringMode ACTIVE_SCORING_MODE = ScoringMode::RssiPeak;
 constexpr uint32_t RSSI_PEAK_IDLE_TIMEOUT_MS = 100UL;
 
 // true使用读写器持续上报的多次盘点，false使用非阻塞单次盘点。
-constexpr bool RFID_USE_PASSIVE_INVENTORY = false;
+constexpr bool RFID_USE_PASSIVE_INVENTORY = true;
 
 // RFID serial wiring: RFID TX -> STM32 PC7, RFID RX -> STM32 PC6.
 #define RFID_SERIAL_RX PC7

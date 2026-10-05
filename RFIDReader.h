@@ -18,7 +18,8 @@ private:
   static constexpr uint8_t QUEUE_CAPACITY = 64;
   static constexpr uint16_t FRAME_CAPACITY = 128;
   static constexpr uint16_t MAX_BYTES_PER_POLL = 96;
-  static constexpr uint32_t ACTIVE_RESPONSE_TIMEOUT_MS = 300;
+  // 2026-10-01：无响应重试由300ms缩短为100ms，减少读写器失联后的恢复等待。
+  static constexpr uint32_t ACTIVE_RESPONSE_TIMEOUT_MS = 100;
   static constexpr uint32_t ACTIVE_INTER_FRAME_GAP_MS = 20;
 
   HardwareSerial serial_;

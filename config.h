@@ -10,7 +10,7 @@ enum class ScoringMode : uint8_t {
 
 constexpr ScoringMode ACTIVE_SCORING_MODE = ScoringMode::RssiPeak;
 // 同一运动员最后一次通知后达到该时长即结算当前峰值。
-constexpr uint32_t RSSI_PEAK_IDLE_TIMEOUT_MS = 100UL;
+constexpr uint32_t RSSI_PEAK_IDLE_TIMEOUT_MS = 300UL;
 
 // true使用读写器持续上报的多次盘点，false使用非阻塞单次盘点。
 constexpr bool RFID_USE_PASSIVE_INVENTORY = true;

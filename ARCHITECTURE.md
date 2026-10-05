@@ -57,7 +57,7 @@ RFID响应
 → `config.h`选择非阻塞单次盘点或读写器持续上报的多次盘点
 → SpeedSkatingTimer按`config.h`选择计分模式
 → `LegacyImmediate`：立即交给DetectionController
-→ `RssiPeak`：已定义运动员按EPC聚合，连续3次信号下降或静默100ms后取该段最高RSSI样本的接收时间
+→ `RssiPeak`：已定义运动员按EPC聚合，仅在静默300ms后取该段最高RSSI样本的接收时间
 → DetectionController按黑名单、运动员、普通EPC顺序判断
 → 黑名单或8秒重复：静默
 → 运动员：更新圈数、单圈时长和总时长，按圈数、总用时、有效扫描顺序计算即时名次，写入近10圈历史并发送0x12

@@ -89,11 +89,13 @@ public:
         entry.peakRssiDbm = event.rssiDbm;
         entry.peakDetectedMs = event.detectedMs;
       }
-      if (entry.consecutiveDescending >= DESCENDING_THRESHOLD) {
-        expiredSelection = selectionFor(entry);
-        entry = {};
-        return RssiAcceptResult::ExpiredSelection;
-      }
+      // TEMPORARY_RSSI_DESCENDING_SETTLEMENT:
+      // 连续三次下降结算暂时关闭，现场测试期间仅由静默超时结算。
+      // if (entry.consecutiveDescending >= DESCENDING_THRESHOLD) {
+      //   expiredSelection = selectionFor(entry);
+      //   entry = {};
+      //   return RssiAcceptResult::ExpiredSelection;
+      // }
       return RssiAcceptResult::Stored;
     }
 

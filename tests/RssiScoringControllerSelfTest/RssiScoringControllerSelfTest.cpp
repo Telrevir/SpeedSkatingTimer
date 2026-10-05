@@ -8,7 +8,7 @@ int main() {
   RssiScoringController scorer(100);
   RssiScoreSelection selection{};
 
-  // 连续三次下降后立即结算整段最高峰；相同峰值取后一次。
+  // 连续下降暂不结算，仍等待静默超时后选取整段最高峰；相同峰值取后一次。
   assert(scorer.accept({0x11111111UL, -40, 1000}, selection) ==
          RssiAcceptResult::Stored);
   assert(scorer.accept({0x11111111UL, -40, 1010}, selection) ==
@@ -18,7 +18,8 @@ int main() {
   assert(scorer.accept({0x11111111UL, -60, 1030}, selection) ==
          RssiAcceptResult::Stored);
   assert(scorer.accept({0x11111111UL, -70, 1040}, selection) ==
-         RssiAcceptResult::ExpiredSelection);
+         RssiAcceptResult::Stored);
+  assert(scorer.takeExpired(1140, selection));
   assert(selection.epc == 0x11111111UL);
   assert(selection.rssiDbm == -40);
   assert(selection.detectedMs == 1010);
@@ -46,7 +47,8 @@ int main() {
   assert(scorer.accept({0x33333333UL, -60, 3040}, selection) ==
          RssiAcceptResult::Stored);
   assert(scorer.accept({0x33333333UL, -70, 3050}, selection) ==
-         RssiAcceptResult::ExpiredSelection);
+         RssiAcceptResult::Stored);
+  assert(scorer.takeExpired(3150, selection));
   assert(selection.epc == 0x33333333UL);
   assert(selection.rssiDbm == -40);
   assert(selection.detectedMs == 3000);
